@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Translations · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Translations</h1>
+
+<p class="lead">You write the game in English. Each other language is one file that maps the English text to its translation. Most text is translated without you doing anything; <code>pnpm lang</code> tells you what's missing.</p>
+
+<h2 id="idea">The idea: the English text is the key</h2>
+<pre><code>// You write:
+await say('anna', 'Hello there!')
+
+// src/content/lang/pl/index.ts has:
+'Hello there!': 'Cześć!',
+
+// A player who picked Polski sees "Cześć!". Without that entry they see "Hello there!".</code></pre>
+<ul>
+  <li>No ids to invent and nothing to keep in sync by hand: the text in your code <i>is</i> the key.</li>
+  <li>A missing (or empty) translation shows the English text, so the game never breaks.</li>
+  <li>If you change the English text, its key changes too: the old translation becomes "unused" and the new text "missing". <code>pnpm lang</code> shows both, so you can carry the translation over.</li>
+  <li>An entry left as <code>''</code> shows the English text in the game. <code>pnpm lang</code> lists it as "empty" and does not count it as translated.</li>
+</ul>
+<p>The language the game is written in is described in <code>src/content/lang/source.ts</code> (its name, "English", shown in the language list).</p>
+
+<h2 id="automatic">What is translated automatically</h2>
+<p>All of this goes through the translator on its way to the screen. Just write English:</p>
+<table>
+  <tr><th>Where</th><th>What</th></tr>
+  <tr><td>Scenes</td><td><code>say</code> / <code>narrate</code> lines, speaker names (character <code>name</code>, and <code>as</code>), choice labels and their <code>disabled</code> reasons</td></tr>
+  <tr><td><code>.vn</code> scripts</td><td>Lines, narration, options</td></tr>
+  <tr><td>Map</td><td>Object <code>label</code>s, speech bubbles (<code>bark</code>), touch button labels</td></tr>
+  <tr><td>Screens</td><td>Window titles, title menu labels</td></tr>
+  <tr><td>Engine messages</td><td>Toasts the engine makes ("New quest: …", item gained, achievements, journal, level up, relationship changes), money (<code>money.format</code>)</td></tr>
+</table>
+<p>Item names and descriptions, quest titles and steps, shop names, achievements, journal entries, enemy and skill names are translated by the windows that show them (they call <code>t()</code>). If you write your own window, do the same.</p>
+
+<h2 id="t">Translating your own text</h2>
+<pre><code>// Anywhere (managers, scripts, map hooks)
+game.t('Saved!')
+game.toast(game.t('You found {count} coins', { count: 5 }))
+
+// React: useLang() returns t and re-renders the component when the language changes
+import { useLang } from '@/core/lang'
+function Panel() {
+  const t = useLang()
+  return &lt;Button&gt;{t('Inventory')}&lt;/Button&gt;
+}</code></pre>
+<div class="note"><code>game.toast(text)</code> does <b>not</b> translate: pass <code>game.t('…')</code>. In React always use <code>useLang()</code> rather than importing <code>t</code>, or the text won't update when the player switches language.</div>
+<h3 id="placeholders">Placeholders</h3>
+<pre><code>t('Health {value}', { value: 50 })            // "Health 50"
+// pl: 'Health {value}': 'Zdrowie {value}'     → "Zdrowie 50"
+
+t('{name} joined the party', { name: t(member.name) })   // translate the inserted name too</code></pre>
+<p>Never build sentences with <code>${…}</code> or <code>+</code>: <code>t(`Health ${hp}`)</code> makes a different key for every number, and the scanner can't find it. Use <code>{placeholders}</code>; translators can then move them where their grammar needs them.</p>
+<h3 id="plurals">Plurals</h3>
+<pre><code>t('I have {count} apples.', { count })      // also in say(): { count } picks the form
+
+// src/content/lang/pl/index.ts
+'I have {count} apples.': {
+  one: 'Mam {count} jabłko.',
+  few: 'Mam {count} jabłka.',
+  many: 'Mam {count} jabłek.',
+  other: 'Mam {count} jabłka.',
+},
+
+// src/content/lang/source.ts: English needs "1 apple" too
+strings: {
+  'I have {count} apples.': { one: 'I have {count} apple.', other: 'I have {count} apples.' },
+},</code></pre>
+<p>The value named <code>count</code> picks the form with the language's own rules (<code>one</code> / <code>few</code> / <code>many</code> / <code>other</code>…; <code>other</code> is required). A plain string still works for texts that don't change.</p>
+
+<h3 id="reword">Rewording text in English</h3>
+<pre><code>// src/content/lang/source.ts
+strings: {
+  'Quest complete: {title}': 'Mission done: {title}',   // an engine toast, your words
+},</code></pre>
+<p>Any text can be reworded in the source language this way, the engine's own included (toasts, buttons, settings). Use the text exactly as written. Translations keep using the original text as their key.</p>
+
+<h3 id="tx">Text kept in constants: tx()</h3>
+<pre><code>import { tx } from '@/core/lang'
+
+const REASONS = { money: tx('Not enough money'), stock: tx('Sold out') }   // marked, not translated yet
+…
+&lt;Button&gt;{t(REASONS[result])}&lt;/Button&gt;                                       // translated when shown</code></pre>
+<p><code>tx()</code> does nothing at runtime; it marks the text so <code>pnpm lang</code> finds it. Use it for labels in objects, arrays and module-level constants, and for text passed through variables (e.g. a <code>disabled</code> reason built with <code>&amp;&amp;</code>).</p>
+<h3 id="markup">Markup</h3>
+<pre><code>'Hey, friend! {wave}Good to see you!{/wave}': 'Hej, przyjacielu! {wave}Dobrze cię widzieć!{/wave}',</code></pre>
+<p>Keep the tags in the translation and translate the text between them. You may move tags (and pauses like <code>{w=0.5}</code>) to fit the sentence.</p>
+<p>The automatic pause after <code>. ! ?</code> works on the translated text, so it follows the translation's punctuation. Full-width <code>。！？</code> count too. Add <code>noAutoPause: true</code> to a line to turn it off.</p>
+
+<h2 id="add-language">Adding a language</h2>
+<ol>
+  <li>Make <code>src/content/lang/de/index.ts</code> (the folder name is the language id):
+<pre><code>import { defineLanguage } from '@/core/lang/define'
+
+export default defineLanguage({
+  name: 'Deutsch',          // shown in Settings → Language, in its own language
+  strings: {},
+})</code></pre></li>
+  <li>Run <code>pnpm lang --write</code>. It appends every game text as an empty entry (<code>'Inventory': '',</code>), grouped at the end of <code>strings</code>.</li>
+  <li>Fill them in. Empty ones still show English, so you can translate bit by bit.</li>
+  <li>Pick it in <b>Settings → Language</b> (or the dev panel's language switch). It appears there automatically.</li>
+  <li><b>First start:</b> the game uses the device's language when it has it (the device's preferred languages in order; a folder named like the code: <code>ja</code>, <code>pl</code>, <code>pt_br</code> for pt-BR), else the source language. Once a language is saved on the device, that one stays. Turn it off with <code>followSystem: false</code> in <code>src/content/lang/source.ts</code>.</li>
+</ol>
+<p>Each language loads only when chosen (its own code chunk). The choice is a per-device setting, not part of save files.</p>
+
+<h3 id="language-file">What a language file can set</h3>
+<pre><code>export default defineLanguage({
+  name: 'Polski',
+  locale: 'pl',                                  // default: the folder name
+  font: "'Noto Sans', sans-serif",               // a font that has its letters
+  strings: { … },
+})</code></pre>
+<p>Pictures, videos and sounds are not listed here: they are found by name (below).</p>
+<ul>
+  <li><code>locale</code> picks the plural rules, the line-breaking rules (Japanese, Chinese) and the voice for <i>Read text aloud</i>.</li>
+  <li><code>font</code> replaces the game's font while the language is chosen (a font the player picks in Settings wins). Put the file in <code>src/content/fonts/</code> (as a <code>fallback</code> font if it should only fill in this language's letters) and use its id here: see <a href="look.html#fonts">Fonts</a>.</li>
+</ul>
+<h3 id="assets">Pictures, videos, sounds and Aseprite art per language</h3>
+<p>For art with words in it (a sign, a logo, a shirt, a sung or spoken line). Nothing to register: add the language's version next to the original. Without one, every language uses the original. Only versions that exist are ever loaded; the build lists them, so the game never asks for a file that isn't there.</p>
+<table>
+  <tr><th>What</th><th>The version in a language</th><th>Example</th></tr>
+  <tr><td>Pictures (PNG, JPG, WebP, AVIF, GIF, SVG), videos (mp4, webm)</td><td>A file <code>&lt;name&gt;.&lt;lang&gt;.&lt;ext&gt;</code> next to <code>&lt;name&gt;.&lt;ext&gt;</code></td><td><code>assets/logo.ja.svg</code> next to <code>assets/logo.svg</code></td></tr>
+  <tr><td>Sounds</td><td>The same, in <code>src/content/audio</code></td><td><code>sfx/shout.ja.wav</code> next to <code>shout.wav</code></td></tr>
+  <tr><td>Voices, music and movies</td><td>A <a href="../story/events/scripts.html#voice-languages">voice language</a> folder (the player's voice language, not the text language): <code>audio/voice/&lt;lang&gt;/…</code>, <code>audio/music/&lt;lang&gt;/…</code>, <code>movies/&lt;id&gt;/&lt;lang&gt;/…</code></td><td><code>voice/ja/anna/hello/anna_0001.wav</code>, <code>music/ja/town.ogg</code>, <code>movies/opening/ja/opening.mp4</code></td></tr>
+  <tr><td>Aseprite files (portraits, map sprites, battle sprites, layered CGs)</td><td>A layer (or folder) <code>&lt;name&gt;.&lt;lang&gt;</code> next to the layer <code>&lt;name&gt;</code>, in the same file</td><td>In Jack's portrait: <code>open.ja</code> next to <code>Open</code> inside <code>@Eyes</code></td></tr>
+</table>
+<ul>
+  <li><code>&lt;lang&gt;</code> is a folder in <code>src/content/lang</code> (<code>ja</code>, <code>pl</code>). A name ending in anything else is just a name.</li>
+  <li><b>Aseprite layers:</b> the language layer takes the other's place, in drawing order, with the other's visibility: hide it while you paint the original. Capitals and spaces around the name don't matter (<code>Open</code> and <code>open.ja</code>, or <code>open.JA</code>, pair up). It works for any layer: a part's option, an always-drawn layer (<code>Shirt.ja</code>), a CG toggle, a sprite layer in every frame. Only pictures that really change get stored, in the same generated sheet (portraits) or as extra files next to it (<code>jack.ja.gen.png</code> for sprites, <code>pond.ja.gen.png</code> for CGs).</li>
+  <li><b>Tilesets</b> have no language versions: they are always one picture.</li>
+  <li>A version with no original next to it is ignored, with a warning in the build.</li>
+  <li>Where it applies by itself: event backgrounds, CGs and the gallery (thumbnails too), portraits, map and battle sprites, movies and their Extras tiles, scene cards, boot and title screens, and the event look-ahead loads the player's language's files. In your own code, wrap a picture or video URL: <code>&lt;img src={lang.image(url)} /&gt;</code>, with <code>useLang()</code> in the component so it changes with the language.</li>
+  <li>Boot screens wait for the player's language before they start, and boot / title <code>preload</code> lists load the language's file, so the right logo shows from the first frame.</li>
+  <li>Changing language: pictures in scenes, windows and the title change at once; map sprites change on the next map load.</li>
+  <li>Which assets have a version: <code>pnpm lang --assets</code> (see below).</li>
+</ul>
+
+<h2 id="workflow">Day-to-day: pnpm lang</h2>
+<pre><code class="language-sh">pnpm lang            # per language: how many are translated, missing and unused strings
+pnpm lang --write    # also adds the missing ones as empty entries
+pnpm lang --assets   # which pictures, videos, sounds and Aseprite files have a version per language</code></pre>
+<pre><code class="language-sh">[lang] pl: 222/225 translated
+  unused (maybe text that changed): "You won?! Fine, take a look at my wares."
+  missing: "You won?! Fine, have some coins for that."
+  missing: "Sold out"</code></pre>
+<ul>
+  <li><b>missing</b>: text in the game with no translation yet.</li>
+  <li><b>unused</b>: a translation whose English text no longer exists. Usually the English was edited: copy the translation to the new key and delete the old entry.</li>
+  <li>Run it after writing new content; it only reads files (no dev server needed).</li>
+  <li><code>--assets</code> lists, per language, the files that <b>have</b> a version and those <b>without</b> one (tilesets left out). It is a separate report because most files need no version: only those with words in them.</li>
+</ul>
+<h3 id="in-game">Checking in the game</h3>
+<p>Dev builds remember every text that was <i>shown</i> without a translation. In the dev panel's <b>Translations</b> section, <b>copy missing</b> puts them on the clipboard as lines ready to paste into the language file (<code>    "Some text": '',</code>). This also catches text the scanner can't see.</p>
+
+<h2 id="finding">How pnpm lang finds text</h2>
+<p>It reads the source files (it doesn't run the game). In <code>src/content</code> it finds:</p>
+<ul>
+  <li><code>t('…')</code> and <code>tx('…')</code></li>
+  <li><code>say(who, '…')</code>, <code>narrate('…')</code>, <code>bark('…')</code></li>
+  <li>Every string inside <code>choice({ … })</code> / <code>choice([ … ])</code> / <code>menu({ … })</code>, and quest <code>steps: { … }</code></li>
+  <li>Fields <code>name</code>, <code>title</code>, <code>label</code>, <code>description</code>, <code>as</code>, <code>disabled</code>, <code>replay</code>, <code>category</code>, <code>text</code>, <code>hiddenText</code> written as a plain string</li>
+  <li>Text built in a function (an item's <code>useLabel</code>): wrap it yourself, <code>game.t('Light')</code>, so <code>pnpm lang</code> finds it</li>
+  <li><code>.vn</code> scripts (compiled first, then read like the above)</li>
+</ul>
+<p>In <code>src/core</code> (the engine) only <code>t('…')</code> and <code>tx('…')</code>. Commented-out lines are ignored. Language files themselves and tests aren't scanned.</p>
+<table>
+  <tr><th>Not found</th><th>Do instead</th></tr>
+  <tr><td><code>say('anna', `Hi ${name}`)</code></td><td><code>say('anna', t('Hi {name}', { name }))</code>… or simpler: <code>{name}</code> placeholders need <code>t()</code>, so avoid names in lines when you can</td></tr>
+  <tr><td><code>const lines = ['Hey!', 'Hi!']</code></td><td><code>[tx('Hey!'), tx('Hi!')]</code></td></tr>
+  <tr><td><code>disabled: cond &amp;&amp; 'Too far away'</code></td><td><code>disabled: cond &amp;&amp; tx('Too far away')</code></td></tr>
+  <tr><td>Text from a function or another file's variable</td><td>Mark it with <code>tx()</code> where it's written</td></tr>
+  <tr><td>A character's <code>unknownName</code>, and names given with <code>rename</code></td><td>Add the entry to the language file by hand (<code>pnpm lang</code> then lists it as unused: keep it)</td></tr>
+</table>
+
+<h2 id="limits">Things to know</h2>
+<ul>
+  <li><b>Same English, same translation.</b> "Back" (a button) and "Back" (a body part) share one key. If a language needs different words, make the English differ (e.g. "Go back").</li>
+  <li><b>Plurals.</b> One text, one form per number: see <a href="#plurals">Plurals</a>.</li>
+  <li><b>Gender.</b> The player has no gender setting; the Polish lines currently address the player in the masculine form.</li>
+  <li><b>Names in data.</b> Character, item and enemy names are text like any other: translate them in the language file.</li>
+  <li>Anything shown with <code>console.log</code>, the dev panel and error screens stays English.</li>
+</ul>
+
+<h2 id="api">API</h2>
+<pre><code>game.t(text, values?)              // translate now
+game.lang.current()                // 'source' | 'pl' | …
+await game.lang.set('pl')          // switch (Settings does this and remembers it)
+game.lang.ids                      // ['pl']
+await game.lang.name('pl')         // 'Polski'
+game.lang.locale()                 // 'pl': for Intl formatting
+game.lang.image(url)               // this language's version of a picture
+game.lang.missing()                // dev: shown-but-missing lines, ready to paste
+useLang()                          // React: t + re-render on change
+tx(text)                           // mark for the scanner</code></pre>
+</main>
+</div>
+</body>
+</html>

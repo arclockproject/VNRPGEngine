@@ -1,0 +1,9 @@
+# An after story (visual novel demo) that needs the bad ending (src/content/endings/bad_end).
+# Until then the After Stories screen shows it as a locked silhouette.
+title The last shift
+description The driver's last day on the job.
+color #ff8a80
+image ./card.svg
+after story [ending bad_end]
+event vn_demo/driver_after
+end

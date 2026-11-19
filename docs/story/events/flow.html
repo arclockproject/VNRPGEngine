@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Events: flow, saves &amp; endings · Engine Guide</title>
+<link rel="stylesheet" href="../../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../../assets/search-index.gen.js" defer></script>
+<script src="../../assets/code.gen.js" defer></script>
+<script src="../../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Events: flow, saves &amp; endings</h1>
+<p class="lead">How scenes run and end: asking for text, running once, events inside events, what the player can do (skip, auto, back), saving in the middle of a scene, chapters, endings and replays.</p>
+<h2 id="input">Asking for text</h2>
+<pre><code>const name = await input('What should I call you?', { default: 'Alex', maxLength: 12 })
+await say('anna', 'Nice to meet you, {name}!', { name })
+game.state.update((d) =&gt; { d.playerName = name })   // keep it in your saved data (add playerName to content/save/data.ts)</code></pre>
+<ul>
+  <li>Never empty: an empty answer gives <code>default</code>; without one the question is asked again.</li>
+  <li>PC and phone type with their own keyboard (Enter / Done confirms). A <b>controller</b> gets on-screen keys: A types, B deletes. The window is <code>src/content/windows/textinput</code> (key rows per language are at its top). Japanese (<code>ja</code>) shows hiragana, with ⇧ for katakana; the <b>゛゜小</b> key changes the last kana (は → ば → ぱ, つ → っ → づ).</li>
+  <li>The answer is part of mid-scene saves and of <b>Back</b>, like a choice.</li>
+  <li>Outside events: <code>await game.dialog.prompt('Name?', { default, maxLength, placeholder })</code> → the text, or <code>null</code> when cancelled.</li>
+</ul>
+
+<h2 id="run-once">Run once</h2>
+<p>The game remembers which events have started in this playthrough (saved with the game). Use that for scenes that should happen once, instead of a hand-made flag:</p>
+<pre><code>// A map object (e.g. a tile you step on)
+onEnter: ({ game }) =&gt; game.events.startOnce('heaven/before_god/meeting'),
+
+// Anywhere else
+if (!game.events.seen('heaven/before_god/meeting')) { … }
+game.events.count('anna/hello')    // how many times it started
+game.events.finished('anna/hello') // it ran to its end at least once</code></pre>
+<ul>
+  <li><code>startOnce</code> resolves <code>true</code> when it ran, <code>false</code> when it was skipped.</li>
+  <li>Old saves start with nothing seen. Nested events count too.</li>
+</ul>
+<h2 id="nesting">Events inside events</h2>
+<pre><code>await event('anna/flashback')            // same scene, same stage; continues after it</code></pre>
+<ul>
+  <li>Loops are refused (a → b → a) with an error that shows the chain. Nesting stops at 8 deep.</li>
+  <li><code>game.events.start()</code> during a scene <b>queues</b> the event to run after the current one (with a dev warning). Don't <code>await</code> that from inside a scene: it would wait forever.</li>
+  <li><code>game.events.isRunning()</code> tells if a scene is on screen.</li>
+</ul>
+<h3 id="params">Event params</h3>
+<pre><code>defineEvent({ title: 'Greeting', run: async ({ params, say }: EventContext&lt;{ name: string }&gt;) =&gt; { … } })
+game.events.start('greet', { name: 'Ola' })     // params are now required and typed</code></pre>
+
+<h2 id="player-controls">What the player can do</h2>
+<p>The speaker's name sits on the dialogue box's top border. The toolbar (by default a row along the box's bottom, at the right: <a href="stage.html#toolbar-place">where</a>) has <b>Settings</b>, <b>Lock</b> (only when it auto-hides), <b>Save</b>, <b>Load</b>, <b>Q.Save</b>, <b>Q.Load</b>, <b>Skip back</b>, <b>Last choice</b>, <b>Back</b>, <b>Auto</b>, <b>To choice</b>, <b>Skip</b>, <b>Flowchart</b> (visual novel mode), <b>Replay voice</b>, favourite <b>Voices</b> and <b>Hide</b> (<a href="stage.html#toolbar">what each does</a>). The Log is in the pause menu.</p>
+<ul>
+  <li><b>Continue</b>: confirm, click or tap. The first press finishes the typing.</li>
+  <li><b>Skip</b> (button, or hold Ctrl / RT): read lines fly by. Stops at unread lines (unless "Skip unread text too" is on in Settings), at choices and when the event ends. Read lines are remembered across all saves.</li>
+  <li>With the setting <b>Keep skipping after a choice</b> (off for new players: <code>skip.afterChoiceByDefault</code> in <code>src/content/scenes.ts</code>), Skip turns itself back on once the answer is picked.</li>
+  <li>In visual novel mode (<a href="../routes.html">routes</a>) Skip and To choice carry on from one scene of the route into the next; they still stop at choices and unread lines.</li>
+  <li><b>Mouse wheel</b>: up opens the log, down continues like a click, and down at the end of the log closes it. Switch each off in <code>src/content/scenes.ts</code>: <code>wheel: { log, advance, closeLog }</code>.</li>
+  <li>While skipping, fades, animations, camera moves, flashes and <code>wait()</code> finish at once (setting "Finish effects while skipping", on by default). Character walks on the map are not sped up.</li>
+  <li><b>To choice</b>: like Skip, without stopping to show each line: straight to the next choice (or unread line).</li>
+  <li><b>Auto</b> (T, or RB on a pad): lines continue by themselves (pause set in Settings; voice lines wait for the clip).</li>
+  <li><b>Q.Save / Q.Load</b> (F5 / F9): the quick save slot. Loading asks first. See <a href="../../systems/saves.html#quick">Saves</a>.</li>
+  <li><b>Back</b> (button, PageUp / LB): one line back, or to the last choice. In a <a href="../routes.html">route</a> (visual novel mode), Back on a scene's first line goes to the last line of the scene before, or to the route choice before it (asked again); the log's <b>Jump back here</b> reaches those earlier scenes too. How many earlier scenes: <code>log.backScenes</code> in <code>src/content/scenes.ts</code> (10; 0 = only the running scene). Loading a save starts that memory over. In the normal game Back stays inside the running scene, as before.</li>
+  <li>Back keeps the scene on screen while it goes back (nothing flashes, nothing fades in again) and lands on the line as it was. Only when that takes longer than <code>log.backCoverMs</code> (600 ms; a very long scene) does the replay cover show. The Back key works while choices are on screen too.</li>
+  <li><b>Skip back</b>: Back again and again until pressed again, a click or confirm, picking an answer, or the start. <b>Last choice</b>: straight back to the last choice made, asked again.</li>
+  <li><b>Log</b> (L or View on a pad, any time; Up: W, arrow up, d-pad or stick up while no choice shows; or Menu → Log): the last 200 lines. L / View closes it again. Up / down scroll it; down at the end, cancel or ✕ closes it. While choices are on screen, up / down move between them instead.</li>
+  <li><b>Hide</b> (button, right-click, H, or Y on a pad): the box and choices step aside to show the scene. The same again, or any tap, click or confirm, brings them back. B is also cancel, which wins where something takes it (windows, the log): one press is one action, so closing a window with B never hides the box.</li>
+  <li>On short screens (phones held sideways, under 520px tall) the box is compact: smaller text and padding. A long list of choices scrolls.</li>
+  <li><b>Reading comfort</b> (Settings → Text): text size, font, how solid the box is, <i>Reduce shaking and flashes</i> (no screen shake, still letters, a soft fade instead of a flash) and <i>Read text aloud</i>. The choices and defaults are in <code>src/content/scenes.ts</code> (<code>text</code>, <code>comfort</code>). See <a href="../../interface/settings.html#settings">Settings</a>.</li>
+  <li><code>shake()</code> also rumbles a controller and buzzes a phone (<code>rumble</code> in <code>scenes.ts</code>; the player can turn Vibration off).</li>
+</ul>
+
+<h3 id="log-jump">Jumping back from the log</h3>
+<p>In the log, left / right pick a line of the running scene and <b>Jump back here</b> returns to it (the same as pressing Back that many times). Lines from earlier scenes can only be jumped to in a route (see Back above). Switch it off with <code>log: { jumpBack: false }</code> in <code>content/scenes.ts</code>. The log's layout (panel, line layout, button symbols): <code>src/content/ui/Log.tsx</code>.</p>
+
+<h2 id="mid-scene-saves">Saving in the middle of a scene</h2>
+<p>Players can save while a line or choice is on screen. The save holds the game as it was when the event started, plus a record of the lines seen, choices made, minigame results and random numbers. Loading replays the event instantly (behind a black cover) up to the saved line.</p>
+<ul>
+  <li>Use <code>random()</code> from the context, not <code>Math.random()</code>, so the replay comes out the same.</li>
+  <li>Side effects in the script (flags, items, money) simply happen again during the replay. That's correct: the game was put back to the moment the event started.</li>
+  <li>If the script changed since the save, the replay stops where it differs and continues from there.</li>
+  <li>Waits, tweens, walks and fades are instant during the replay.</li>
+  <li>Toasts, sound effects and controller rumble from the script stay quiet during the replay: the player got them the first time.</li>
+  <li>What the player does in a window while a line or choice waits (buying in a shop, using or equipping an item, changing the party) is recorded too, so it is still there after loading. Recorded parts: your <code>game.data</code>, money, shop stock, party, quests, relationships, journal, names, switched-on items, difficulty, recipes and known places.</li>
+  <li><b>Back</b> and "Jump back here" in the log return to the moment that line appeared: what the player did in a window while it waited is undone (money back, item gone), earlier actions are kept. Back takes the same short time however long the scene is.</li>
+</ul>
+<p>A battle inside an event is not fought again on load: its result, the HP left, the items used and the rewards are stored with the save and put back at that point of the scene. Your own engine code with a result that can't be replayed can do the same: <code>const mark = gameMark()</code> before it and <code>settleGame(mark)</code> after it (<code>core/scene/replay.ts</code>).</p>
+
+<h2 id="chapters">Chapters</h2>
+<p>Labels for the story&#39;s parts. A save shows its chapter instead of the place, and picking a save shows the chapter&#39;s title and description, so the player knows where the story is before loading it. Every chapter has a <b>number</b>, an optional <b>sub chapter</b> (1.2), a <b>title</b> and a description. In visual novel mode a route can start one too, and the <a href="../routes.html#chapters">flowchart</a> draws a line for each new chapter number (never for a sub chapter).</p>
+<pre><code>// src/content/chapters.ts
+export default defineChapters({
+  announce: 'card',                // 'toast' (a small message), 'card' (full screen), 'both', or false
+  card: { style: 'screen', ms: 2800, fadeMs: 600, skippable: true },   // the chapter card (below)
+  label: tx('Chapter {number}'),   // how a number reads: {number} = 1, or 1.2
+  vn_chapters: { 0: tx('Prologue'), 1: tx('Spring') }, // a name per number instead of label (others: label)
+  full: tx('{label}: {title}'),    // on saves and in the toast
+  chapters: {                      // ordered by number, then sub
+    heaven:  { number: 0, title: tx('Before God'), description: tx('Where it all starts.') },
+    town:    { number: 1, title: tx('The town'), image: townPicture },  // image: on the card
+    evening: { number: 1, sub: 2, title: tx('The last bus'),       // "Chapter 1.2: The last bus"
+               card: { style: 'overlay' } },                    // its own card (any card option)
+    finale:  { number: 9, title: tx('Finale'), screen: FinaleCard },  // its own drawing
+  },
+})
+
+await chapter('town')              // in a scene: begins it and waits for a 'screen' card to cover (`chapter town` in .vn)
+game.chapters.reach('town')      // anywhere else (a map's onEnter…): begins it, does not wait
+game.chapters.current()          // the chapter the game is in (saved)
+game.chapters.info('town')       // { number, sub, title, description }
+game.chapters.label('evening')   // "Chapter 1.2" (translated)
+game.chapters.numberLabel(1)     // "Chapter 1" (the flowchart's heading for every 1.x)
+game.chapters.fullTitle('town')  // "Chapter 1: The town" (translated)</code></pre>
+<p><b>The chapter card</b> (<code>announce: 'card'</code> or <code>'both'</code>) comes in two styles:</p>
+<ul>
+  <li><b><code>'screen'</code></b> (default, a VN eyecatch): it covers the stage. <code>await chapter('id')</code> waits until it has faded in, so the stage changes after it (<code>bg</code>, <code>show</code>, <code>hide</code>…) happen <b>at once</b> under it (no fades, no slides). Once its time is up it waits until the new pictures have loaded, then fades out onto the new scene: picture X goes under the card, picture Y is already there when it leaves, nothing swaps afterwards. An event started while a card still fades in (a route's <code>chapter()</code> before an <code>event()</code>) waits the same way.</li>
+  <li><b><code>'overlay'</code></b>: a see-through backdrop (<code>chapterCardOverlay</code>) with the number, title and description over the scene; the stage stays as it is.</li>
+</ul>
+<pre><code>card: {
+  style: 'screen',
+  ms: 2800, fadeMs: 600,          // time on screen with both fades; or fadeIn / fadeOut
+  steps: [800, 1500],              // instead of ms: like a boot screen, the card's `step` prop counts them
+  skippable: true,                 // click / tap / confirm (it still waits for the pictures)
+  maskIn: 'irisOut', maskOut: 'wipeLeft',   // a mask transition from scenes.ts instead of a fade ('screen' only)
+}</code></pre>
+<p>The next line, choice or text input waits for the card in both styles, so the scene goes on after it. The drawing (<code>src/content/ui/ChapterCard.tsx</code>, or a chapter's own <code>screen</code> component) gets <code>label</code>, <code>title</code>, <code>description</code>, <code>image</code>, <code>style</code>, <code>shown</code> + <code>fadeMs</code> (fade with them), <code>phase</code> ('in', 'on', 'out'), <code>step</code> and <code>skipped</code>: CSS animations can run while <code>phase</code> is 'on', and show their end at once when <code>skipped</code>. A click, a tap or confirm skips it (<code>skippable</code>). It never shows while a loaded save replays its scene, while skipping, or in a scene watched from Extras. <b>Reduce shaking and flashes</b> drops the fades. Looks: the <code>chapterCard</code>, <code>chapterCardLabel</code>, <code>chapterCardTitle</code>, <code>chapterCardDescription</code> and <code>chapterCardOverlay</code> parts in <code>src/content/look/parts.ts</code>; a chapter's <code>image</code> shows on a 'screen' card.</p>
+<ul>
+  <li>Picking a save in the Saves window shows: save type, play time and date, the map&#39;s title (and the event&#39;s <code>title</code>, for a save made during one, e.g. <i>Town · Jack&#39;s outfit</i>), then the chapter (number and title) and its description.</li>
+  <li>Reaching a chapter during a scene and saving there shows the new chapter on the save, as expected.</li>
+</ul>
+
+<h2 id="endings">Endings</h2>
+<pre><code>// src/content/endings/true_end/index.ts
+export default defineEnding({
+  title: &#39;Together&#39;,
+  description: &#39;You left the town with Anna.&#39;,
+  hint: &#39;Trust someone.&#39;,        // shown while it is still locked
+  // image, order: 1, secret: true (not listed or counted until reached)
+})
+
+ending(&#39;true_end&#39;)                 // in an event: reached, for good, in every save
+await game.windows.open(&#39;credits&#39;)
+game.session.leave(&#39;title&#39;)</code></pre>
+<p><code>ending()</code> only records it: end the event and leave the game yourself. Reached endings are listed in Extras → Endings, count towards the <a href="../../gameplay/extras.html#completion">completion percentage</a>, and (by default) unlock <a href="../../systems/saves.html#new-game-plus">New Game+</a>. From code: <code>game.extras.reachEnding(id)</code>, <code>endingReached(id)</code>, <code>endings()</code>.</p>
+
+<h2 id="replay">Replayable scenes</h2>
+<pre><code>defineEvent({ title: 'The pond', replay: 'The pond', run: async (ctx) =&gt; { … } })   // listed in Extras → Scenes once finished
+defineEvent({ title: 'The pond', replay: { title: 'The pond', preview }, run: … }) // with a card picture (import preview from './preview.png')</code></pre>
+<p>See <a href="../../gameplay/extras.html#extras">Extras</a>. Keep replayable events to the scene itself (no map changes).</p>
+</main>
+</div>
+</body>
+</html>

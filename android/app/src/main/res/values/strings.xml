@@ -1,0 +1,5 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- app_name, title_activity_main, package_name, custom_url_scheme: set in app/build.gradle from
+         src/content/config/app.ts (written to android/app.properties by scripts/build.ts). -->
+</resources>

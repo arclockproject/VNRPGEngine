@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recipes · Engine Guide</title>
+<link rel="stylesheet" href="assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="assets/search-index.gen.js" defer></script>
+<script src="assets/code.gen.js" defer></script>
+<script src="assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Recipes</h1>
+
+<p class="lead">Common tasks from start to finish, one short example per mechanic. Each links to the full explanation.</p>
+
+<h2 id="npc">A new NPC who talks</h2>
+<ol>
+  <li><b>The character:</b> <code>src/content/characters/mira/index.ts</code>
+<pre><code>import { defineCharacter } from '@/core/define'
+import sprite from './sprites/mira.gen'          // characters/mira/sprites/mira.aseprite (idle/walk tags)
+
+export default defineCharacter({ name: 'Mira', color: '#ce93d8', blip: 'sfx/blip', sprite })</code></pre>
+  No portraits yet? Leave them out: scenes show a coloured placeholder. (<a href="world/characters.html#define">Characters</a>, <a href="world/art.html#sprites">sprites</a>)</li>
+  <li><b>The scene:</b> <code>src/content/events/mira/hello/index.vn</code>
+<pre><code class="language-vn">show mira
+mira: Oh, a visitor!
+choice:
+  * Who are you?
+    mira: Just a traveller.
+  * Bye.
+set met_mira = true</code></pre>
+  Add <code>met_mira: false</code> to <code>flags.ts</code>. (<a href="story/vn.html">.vn scripts</a>)</li>
+  <li><b>On the map:</b> in Tiled, add a 16×16 object named <code>mira</code> on the object layer. In the map's <code>index.ts</code>:
+<pre><code>objects: {
+  mira: { character: 'mira', facing: 'down', onInteract: ({ game }) =&gt; game.events.start('mira/hello') },
+}</code></pre></li>
+  <li><b>Translate</b>: <code>pnpm lang --write</code>, fill in the Polish lines. (<a href="interface/translations.html#workflow">Translations</a>)</li>
+</ol>
+
+<h2 id="new-map">A new map with a door</h2>
+<ol>
+  <li>Make <code>src/content/maps/countryside/cave/</code> with <code>cave.tmx</code> (tileset: <code>../../../tilesets/countryside.tsj</code>).</li>
+  <li>In Tiled add a <code>spawn</code> object named <code>entrance</code>, and a <code>door</code> object with <code>map</code> = <code>countryside/town</code>, <code>spawn</code> = <code>from_cave</code>.</li>
+  <li><code>index.ts</code>:
+<pre><code>import { defineMap } from '@/core/define'
+import cave from './cave.gen'
+
+export default defineMap({ title: 'Cave', tiled: cave, music: null, lighting: { tint: '#000000', strength: 0.7 } })</code></pre></li>
+  <li>In <code>town.tmx</code> add a spawn <code>from_cave</code> and a door to <code>countryside/cave</code> / <code>entrance</code>.</li>
+  <li><code>pnpm test</code>: the maps test checks both doors lead somewhere real. (<a href="world/maps.html#doors">Doors</a>)</li>
+</ol>
+<div class="tip">Dark map? Give the player a light: the lantern already does that (<code>items/lantern</code>). Add <code>light</code> to torches. (<a href="world/maps.html#lights">Lights</a>)</div>
+
+<h2 id="shop">A shop</h2>
+<ol>
+  <li><code>src/content/shops/blacksmith/index.ts</code>:
+<pre><code>export default defineShop({
+  name: 'Blacksmith',
+  items: { wooden_sword: {}, leather_vest: { stock: 2 } },
+  buys: true,
+})</code></pre></li>
+  <li>Open it from an NPC or scene: <code>game.shops.open('blacksmith')</code> (in .vn: <code>shop blacksmith</code>).</li>
+  <li>Item prices come from each item's <code>price</code>. (<a href="gameplay/items.html#money">Money &amp; shops</a>)</li>
+</ol>
+
+<h2 id="quest">A quest</h2>
+<ol>
+  <li><code>src/content/quests/lost_cat/index.ts</code>:
+<pre><code>export default defineQuest({
+  title: 'The lost cat',
+  description: 'Mira lost her cat somewhere in the forest.',
+  steps: { search: 'Look for the cat in the forest', return: 'Bring the cat back to Mira' },
+  onComplete: ({ game }) =&gt; game.money.add(20, { notify: true }),
+})</code></pre></li>
+  <li>Start it in Mira's scene: <code>quest start lost_cat</code>.</li>
+  <li>A trigger in the forest (Tiled object named <code>cat</code>, behaviour in the forest map):
+<pre><code>cat: {
+  onInteract: async ({ game }) =&gt; {
+    if (game.quests.step('lost_cat') !== 'search') return
+    await game.events.start('forest/found_cat')
+    game.quests.setStep('lost_cat', 'return')
+  },
+},</code></pre></li>
+  <li>Back in Mira's scene:
+<pre><code class="language-vn">if game.quests.step('lost_cat') === 'return':
+  mira:happy: You found her!
+  quest done lost_cat</code></pre>
+  (<a href="gameplay/progress.html#quests">Quests</a>)</li>
+</ol>
+
+<h2 id="hidden-step">A quest step that stays "???"</h2>
+<pre><code>steps: {
+  search: 'Look for the cat in the forest',          // plain: shown once the quest gets there
+  secret: {                                          // listed from the start, masked until `when` is true
+    text: 'Ask the hermit about the collar',
+    when: ({ game }) =&gt; game.flags.get('found_collar'),
+    // hiddenText: 'Something is missing…',          // instead of "???"
+  },
+},</code></pre>
+<p>Keep <code>steps</code> written out in the quest file: the step ids are read from it. (<a href="gameplay/progress.html#quests">Quests</a>)</p>
+
+<h2 id="remembered-choice">A choice the game remembers, and a friendship</h2>
+<pre><code class="language-vn">mira: Will you help me look?
+choice:
+  * Of course.
+    set helping_mira = true
+    love mira +5
+    mira:happy: Thank you!
+  * Not now.
+    mira: Oh. All right.
+  * You can count on me, as always. if love('mira') &gt;= 20
+    mira:happy: I knew it.</code></pre>
+<ul>
+  <li>Add <code>helping_mira: false</code> to <code>flags.ts</code>; later scenes ask <code>if flag('helping_mira'):</code>.</li>
+  <li><code>love</code> changes relationship points (with a toast). Limits and start value: <code>relationship: { start: 0, min: -50, max: 100 }</code> in the character. In TS: <code>game.relationships.get('mira')</code>.</li>
+  <li>An option ending in <code>if …</code> only shows when it is true. (<a href="story/vn.html#blocks">Choices and conditions</a>, <a href="world/characters.html#define">Characters</a>)</li>
+</ul>
+
+<h2 id="cutscene-once">A cutscene that plays once when you walk in</h2>
+<pre><code>// in a map's objects (Tiled: a rectangle named "bridge_scene")
+bridge_scene: {
+  onEnter: async ({ game, world }) =&gt; {
+    if (game.flags.get('saw_bridge')) return
+    game.flags.set('saw_bridge', true)
+    await world.camera.panTo({ x: 20, y: 6 })
+    await game.events.start('forest/bridge')
+    await world.camera.reset()
+  },
+},</code></pre>
+<p>The world is frozen while the handler runs, so the player can't walk away mid-scene. (<a href="world/characters.html#player-cutscenes">Cutscenes</a>)</p>
+
+<h2 id="battle-area">An enemy and a battle area</h2>
+<ol>
+  <li><code>src/content/enemies/mushroom/index.ts</code>:
+<pre><code>export default defineEnemy({
+  name: 'Angry mushroom', color: '#e57373',
+  stats: { hp: 22, attack: 6, defense: 3, speed: 2 },   // speed = how often it acts
+  xp: 9, money: 5, drops: [{ item: 'bread', chance: 0.2 }],
+})</code></pre></li>
+  <li>In Tiled: a rectangle with class <code>encounter</code>, property <code>enemies</code> = <code>mushroom;mushroom,slime</code>, <code>rate</code> = <code>0.1</code>.</li>
+  <li>Or one standing on the map: an object with class <code>enemy</code>, property <code>enemy</code> = <code>mushroom</code>. Gone after a win.</li>
+  <li>Or a fixed fight from a scene: <code>battle mushroom, mushroom</code>, and check the result in TS: <code>if ((await game.battles.start({ enemies: ['mushroom'] })) === 'win') …</code>. (<a href="gameplay/battles.html#battles">Battles</a>)</li>
+</ol>
+
+<h2 id="skill">A skill</h2>
+<pre><code>// src/content/skills/frost_bite/index.ts
+export default defineSkill({
+  name: 'Frost bite', description: 'A cold hit that may slow.',
+  mp: 4,
+  target: 'enemy',                 // enemy | all_enemies | ally | all_allies | self | fallen_ally
+  element: 'ice',
+  delay: 1.2,                      // the user's next turn comes a little later (1 = normal)
+  effects: [
+    { type: 'damage', power: 1.3, uses: 'magic', against: 'resistance' },
+    { type: 'status', status: 'slow', chance: 0.5 },          // chained: only if the hit landed
+    { type: 'delay', amount: 0.3, evenOnMiss: true },         // separate: happens either way
+  ],
+})</code></pre>
+<ul>
+  <li>Give it to someone: <code>battle: { skills: ['frost_bite'] }</code> in a character, or <code>actions: [{ skill: 'frost_bite' }]</code> in an enemy.</li>
+  <li>Other effects: <code>cure</code>, <code>revive</code>, <code>delay</code> (push a turn back), <code>custom</code>. Damage that nothing reduces: <code>pure: true</code>.</li>
+  <li>A battle item is the same list: <code>defineItem({ battle: { effects: [{ type: 'heal', amount: 20 }] } })</code>. (<a href="gameplay/battles.html#battle-skills">Skills and effects</a>)</li>
+</ul>
+
+<h2 id="status">A status, and a weak spot</h2>
+<pre><code>// src/content/statuses.ts — add an entry
+bleed: { name: 'Bleed', description: 'Loses HP every turn.', icon: '✚', color: '#e53935',
+         bad: true, turns: 3, tick: { hp: -0.06 } },
+rage:  { name: 'Rage', icon: '▲', turns: 2, stats: { attack: 1.5, defense: 0.7 } },   // a buff with a price
+
+// an enemy (or a character's `battle`, or an item's `equip`)
+elements: { fire: 2, ice: 0.5, poison: 0 },   // weak to fire ("Weak!"), resists ice, immune to poison
+immune: ['sleep'],                            // statuses that never stick</code></pre>
+<p>Elements are listed in <code>stats.ts</code>. <code>restrict: 'skip'</code> makes a status cost the turn (sleep, stun). All statuses end with the fight. (<a href="gameplay/battles.html#battle-statuses">Statuses and elements</a>)</p>
+
+<h2 id="troop">A boss fight (a troop) and a smarter enemy</h2>
+<pre><code>// src/content/troops/mushroom_king/index.ts
+export default defineTroop({
+  enemies: ['mushroom_king', 'mushroom', 'mushroom'],
+  background: 'forest', music: 'music/forest', canFlee: false,
+  rewards: { xp: 80, money: 50, drops: [{ item: 'lantern', chance: 1 }] },
+})
+
+// src/content/enemies/mushroom_king/index.ts
+actions: [
+  { skill: 'attack', weight: 3 },
+  { skill: 'venom' },
+  { skill: 'heal', weight: 5, when: ({ self }) =&gt; self.hp &lt; 20 },   // only when hurt
+],</code></pre>
+<p>Start it with <code>battle mushroom_king</code> in a .vn file, <code>game.battles.start('mushroom_king')</code>, or a map enemy's <code>fight: { troop: 'mushroom_king' }</code>. (<a href="gameplay/battles.html#battle-enemies">Enemies and troops</a>)</p>
+
+<h2 id="party-member">A party member who learns skills</h2>
+<ol>
+  <li>Give the character numbers:
+<pre><code>// characters/mira/index.ts
+battle: {
+  base: { hp: 22, mp: 12, attack: 4, defense: 3, magic: 6, resistance: 4, speed: 7, luck: 5 },
+  growth: { hp: 4, mp: 2, attack: 1, magic: 1.2, speed: 1 },                  // per level
+  skills: ['heal', { skill: 'frost_bite', level: 3 }, { skill: 'fire', quest: 'lost_cat' }],
+},</code></pre></li>
+  <li>She joins in a scene: <code>join mira</code> (TS: <code>game.party.add('mira', { notify: true })</code>). XP: <code>xp 20</code>.</li>
+  <li>Teach a skill from the story: <code>game.party.learn('mira', 'quicken', { notify: true })</code>.</li>
+  <li>A weapon with its own move: <code>equip: { slot: 'weapon', stats: { attack: 3 }, skills: ['slash'] }</code>. Off again when unequipped.</li>
+</ol>
+<p>(<a href="gameplay/battles.html#party">Party</a>, <a href="gameplay/battles.html#battle-learning">Who has which skill</a>)</p>
+
+<h2 id="equipment-effects">Equipment that does something in battle</h2>
+<pre><code>// items/cursed_ring/index.ts
+equip: {
+  slot: 'accessory', stats: { magic: 2 }, elements: { fire: 0.5 }, immune: ['sleep'],
+  battle: {
+    onStart: [{ type: 'status', status: 'strong' }],                                   // when the fight begins
+    onTurn: [{ type: 'heal', amount: 6 }, { type: 'status', status: 'poison', turns: 1 }],   // every turn of the wearer
+  },
+}</code></pre>
+<p>The effects are the same as a skill's and always land on the wearer. (<a href="gameplay/battles.html#battle-skills">Skills and effects</a>)</p>
+
+<h2 id="carried-item">An item that does something while you carry it</h2>
+<pre><code>// items/lantern/index.ts
+export default defineItem({
+  name: 'Lantern', icon, price: 20, max: 1,
+  light: { radius: 3.5, color: '#ffe0a0' },                 // glows around the player while switched on
+  onObtain: ({ game, id }) =&gt; game.items.setOn(id, true),   // found, bought, given
+  onLose: ({ game, id }) =&gt; game.items.setOn(id, false),    // sold, used up, taken
+  keepOnUse: true,
+  useLabel: ({ game, id }) =&gt; (game.items.isOn(id) ? game.t('Put out') : game.t('Light')),
+  use: ({ game, id }) =&gt; { game.items.toggle(id) },         // the inventory button
+})</code></pre>
+<p><code>onObtain</code> / <code>onLose</code> can do anything: set a flag, move a quest on, change a stat. Use the <code>game</code> they are given; item files must not import it. (<a href="gameplay/items.html#item-hooks">Items that do something while carried</a>)</p>
+
+<h2 id="daily-life">An NPC with a daily routine</h2>
+<pre><code>// in a map's objects
+mira: {
+  character: 'mira',
+  schedule: [
+    { from: '8', at: { x: 14, y: 9 }, facing: 'down' },        // walks there when the time comes
+    { from: '18', at: { x: 20, y: 5 } },
+    { from: '22', at: { x: 31, y: 10 }, hidden: true },        // goes home
+  ],
+},
+
+// anywhere with the world: a line over her head, no scene needed
+void world.npc('mira').bark('Lovely evening.')</code></pre>
+<p>Time only runs while the player is free on a map. (<a href="world/characters.html#schedules">Schedules</a>, <a href="world/characters.html#barks">Speech bubbles</a>, <a href="world/maps.html#time">Time of day</a>)</p>
+
+<h2 id="mood">A dark, rainy place with its own sound</h2>
+<pre><code>// the map
+defineMap({ title: 'Cave', tiled: cave, music: null, ambient: 'ambient/wind',
+            lighting: { tint: '#000000', strength: 0.7 } })
+
+// a torch (any object or prop)
+torch: { light: { radius: 4, color: '#ffa04a', flicker: 0.35 } },
+
+// from a script
+game.maps.weather('rain', { intensity: 0.5 })     // 'snow' | null</code></pre>
+<p>A corner with different sound: in Tiled draw a rectangle with class <code>zone</code> and the properties <code>music</code> and / or <code>ambient</code> (empty = silence). Lights only show when it is dark. (<a href="world/maps.html#lights">Lights</a>, <a href="world/maps.html#weather">Weather</a>, <a href="systems/audio.html#zones">Sound zones</a>)</p>
+
+<h2 id="chest">A chest that stays open</h2>
+<ol>
+  <li>The chest is already a prop (<code>props/chest</code>). In Tiled: an object with class <code>chest</code> and the property <code>item</code> = <code>lantern</code>.</li>
+  <li>Your own prop remembers things per place with <code>memory</code>:
+<pre><code>onInteract: async ({ game, prop, memory }) =&gt; {
+  if (memory.get('open')) return game.toast(game.t('The chest is empty.'))
+  memory.set('open', true)                 // saved
+  await prop.play('opening', { hold: true })
+  game.items.add('apple', 1, { notify: true })
+},</code></pre></li>
+</ol>
+<p>(<a href="world/maps.html#props">Props</a>)</p>
+
+<h2 id="unlockables">An achievement, a journal entry and a gallery picture</h2>
+<pre><code>// achievements/cat_finder/index.ts
+export default defineAchievement({ title: 'Cat finder', description: 'Bring the cat home.' })
+
+// codex/mira/index.ts — the text can change with the story
+export default defineCodex({
+  title: 'Mira', category: 'People', text: 'A traveller looking for her cat.',
+  versions: [{ when: (game) =&gt; game.quests.isDone('lost_cat'), text: 'A friend. Her cat likes you too.' }],
+})
+
+// gallery/reunion/index.ts
+export default defineGallery({ title: 'Reunion', image })</code></pre>
+<pre><code class="language-vn">cg reunion
+mira:happy: There you are!
+cg none
+achievement cat_finder
+codex mira</code></pre>
+<p>Showing a <code>cg</code> unlocks it in Extras. To make the whole scene replayable there, give the event <code>replay: 'The reunion'</code>. (<a href="gameplay/progress.html#achievements">Achievements &amp; journal</a>, <a href="gameplay/extras.html#extras">Extras</a>)</p>
+
+<h2 id="window-hotkey">A window with its own key</h2>
+<ol>
+  <li><code>src/content/windows/map_view/index.tsx</code> with <code>defineWindow({ title: 'Map', component: MapView })</code>. (<a href="interface/screens.html#windows">Windows</a>)</li>
+  <li>In <code>input.ts</code>: <code>map_view: { keys: ['KeyL'], buttons: [GP.RT] }</code> (pick a key and a button no other action uses), and its name in <code>windows/settings/Controls.tsx</code>.</li>
+  <li>In <code>Hud.tsx</code>: <code>useAction('map_view', () =&gt; game.windows.toggle('map_view'), { layers: ['map', 'windows'] })</code>. (<a href="interface/input.html#input">Input</a>)</li>
+  <li>Touch and pad players without a spare button: add a button for it to the pause menu (<code>windows/menu</code>), or a <code>touchButtons</code> entry in <code>input.ts</code>.</li>
+</ol>
+
+<h2 id="minigame-branch">A minigame that changes the story</h2>
+<pre><code>// in an event
+const result = await game.minigames.start('rock_paper_scissors')
+if (result === 'win') {
+  game.achievements.unlock('first_win')
+  await say('anna:surprised', 'You won?!')
+} else {
+  await say('anna:happy', 'Ha! Just like old times.')
+}</code></pre>
+<p>Minigame results are recorded in mid-scene saves, so loading replays the same outcome. (<a href="interface/screens.html#minigames">Minigames</a>)</p>
+
+<h2 id="new-data">Saving something new</h2>
+<ol>
+  <li>Add the field in <code>save/data.ts</code>: <code>visitedCaves: [] as string[]</code>.</li>
+  <li>Once the game is out (players have saves), add <code>save/migrations/vN.ts</code>, one higher than the last (the first is <code>v2.ts</code>), and an example old save in <code>save.test.ts</code>:
+<pre><code>export default defineMigration(({ engine, data }) =&gt; ({ engine, data: { ...data, visitedCaves: [] } }))</code></pre></li>
+  <li>Use it: <code>game.state.update((d) =&gt; { d.visitedCaves.push('cave') })</code>. (<a href="systems/saves.html#versions">Migrations</a>)</li>
+</ol>
+<p>Just a yes/no or a counter? A <a href="gameplay/items.html#flags">flag</a> needs no migration.</p>
+
+<h2 id="language">A new language</h2>
+<p>See <a href="interface/translations.html#add-language">Adding a language</a>: one folder, <code>pnpm lang --write</code>, fill in.</p>
+</main>
+</div>
+</body>
+</html>

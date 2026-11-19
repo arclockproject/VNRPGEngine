@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tools, tests &amp; building · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Tools, tests &amp; building</h1>
+
+<p class="lead">The dev panel, hot reload, generated files, tests, the desktop app, and the mistakes that are easy to make.</p>
+
+<h2 id="dev-panel">Dev panel</h2>
+<p>Press <code>`</code> (the key left of 1) in a dev build. Along the top: collision overlay toggle, the player's tile and position, the clock. Sections:</p>
+<table>
+  <tr><th>Section</th><th>Lets you</th></tr>
+  <tr><td>Collision overlay</td><td>Red walls, orange NPC boxes, green triggers, blue interaction areas, yellow objects with ids, cyan player hitbox</td></tr>
+  <tr><td>Maps &amp; spawns, Events, Minigames, Windows</td><td>Jump to any map/spawn; start anything</td></tr>
+  <tr><td>Flags, relationships, money, items, quests</td><td>Edit values, add/remove, start/advance/reset quests</td></tr>
+  <tr><td>Party, battles</td><td>Give XP, heal or hurt, add members; fight any enemy or troop</td></tr>
+  <tr><td>Achievements &amp; journal</td><td>Unlock any</td></tr>
+  <tr><td>Time &amp; weather, props</td><td>Set the hour, rain/snow; spawn a prop in front of the player</td></tr>
+  <tr><td>Translations</td><td>Switch language; copy the texts shown without a translation</td></tr>
+  <tr><td>Title screens</td><td>Unlock, lock and show each <a href="../interface/screens.html#title-variants">title screen variant</a></td></tr>
+  <tr><td>Across all saves</td><td>Count / reset read lines, unlocks and achievements</td></tr>
+  <tr><td>Look</td><td>Open the look gallery: every colour, text size, button (each variant and colour: normal, focus, disabled), named part and other MUI part from <code>content/look/</code>, with a button to hear each UI sound. See <a href="../interface/look.html">The game's look</a>.</td></tr>
+  <tr><td>System state</td><td>What the engine is doing (screens, map, scene)</td></tr>
+</table>
+
+<h2 id="hot-reload">Hot reload</h2>
+<ul>
+  <li>Saving a map, structure, <code>.tmx</code>, event (<code>.ts</code> or <code>.vn</code>), window or minigame updates the running game. The current map rebuilds with the player standing in the same place.</li>
+  <li>Characters, props, items, quests and other up-front content reload the page.</li>
+  <li>Aseprite and Tiled saves regenerate their <code>.gen</code> files on the spot.</li>
+</ul>
+
+<h2 id="generated">Generated files</h2>
+<p>Never edit these; they're rewritten by the dev server and <code>pnpm gen</code> (also part of <code>pnpm typecheck</code>). They are committed, so a fresh checkout typechecks.</p>
+<table>
+  <tr><th>File</th><th>From</th></tr>
+  <tr><td><code>src/generated/registry.gen.ts</code></td><td>The content folders, audio files and migrations, plus plain id lists (<code>ContentIds</code>, <code>QuestStepIds</code>: quest step ids are read from each quest file, so it is rewritten when a quest file changes)</td></tr>
+  <tr><td><code>*.gen.ts</code> + <code>*.gen.png</code> next to <code>.aseprite</code></td><td>Sprites and portraits</td></tr>
+  <tr><td><code>*.gen.ts</code> next to <code>.tmx</code> / <code>.tmj</code></td><td>Tiled maps and structures</td></tr>
+  <tr><td><code>index.gen.ts</code> next to <code>index.vn</code>, <code>name.gen.ts</code> next to <code>name.vn</code></td><td>Dialogue scripts</td></tr>
+  <tr><td><code>docs/assets/*.gen.js</code></td><td>This guide's search and code colours (<code>pnpm guide</code>)</td></tr>
+</table>
+
+<h2 id="story">Script report: pnpm story</h2>
+<pre><code class="language-sh">pnpm story            # the report
+pnpm story --voice    # also writes the scripts to record (build/voice-script.csv, build/voice-script/&lt;voice&gt;.csv)
+pnpm story --number   # first numbers every spoken line that has no voice yet</code></pre>
+<ul>
+  <li>Lines and words per event and per speaker; per event how many lines have a voice number (<i>voiced</i>) and how many of those are recorded in the default voice language.</li>
+  <li><b>Events that nothing starts</b>: no map, event, item or window names them.</li>
+  <li><b>.vn lines that never run</b> (they come after <code>end</code>).</li>
+  <li><b>Lines not recorded yet</b>: lines with a voice number whose clip is not in the default language's folder.</li>
+  <li><b>Voice numbers used twice</b> in one event by one speaker (those lines would share a clip).</li>
+  <li><b>Voice clips no line plays</b>, <b>sounds in <code>audio/voice</code> that are not a clip</b> (wrong folder or name), and per voice language the clips it is <b>missing</b> that the default language has (those lines play the default one).</li>
+  <li><code>--voice</code>: a spreadsheet of every line with a voice number: event, speaker, number, text, the line written before it (so the actor knows what they answer), the sound file to record, and whether it exists. Also one file per voice in <code>build/voice-script/</code> (<code>anna.csv</code>, <code>student_a.csv</code>…) to hand to each actor. See <a href="../story/events/scripts.html#voices">Voices</a>.</li>
+  <li id="voice-numbers"><code>--number</code>: writes the next free voice number on every spoken line without a voice, then reports as usual. Per event and per speaker, one more than the highest number there (gaps are never filled, nothing is ever renumbered). .vn files get <code>anna(0012): Hi!</code> (padded to <code>voice.digits</code>), TypeScript events <code>{ voice: 12 }</code>. Plain narration is left alone (number it by hand to voice it). A line whose options are a variable is listed, not changed. Commit first, so you can look at the change.</li>
+  <li>It reads <code>say()</code> / <code>narrate()</code> with the text written in place; text built at runtime is missed.</li>
+</ul>
+
+<h2 id="tests">Tests</h2>
+<pre><code class="language-sh">pnpm test               # everything once
+pnpm test:watch         # re-run on save
+pnpm vitest run src/core/managers/party.test.ts   # one file</code></pre>
+<p>Tests to know:</p>
+<ul>
+  <li><code>src/content/maps.test.ts</code>: every map is well formed (spawns, doors, props, sprites, schedules) and structures fit.</li>
+  <li><code>src/core/**/*.test.ts</code>: the engine (battles, party, shops, saves and migrations, replays, input, tweens, grid…).</li>
+  <li><code>vite/**</code>: codegen (registry, Tiled, Aseprite, .vn compiler and checker). <code>scripts/**</code>: <code>pnpm lang</code>, <code>pnpm story</code>, this guide.</li>
+</ul>
+<p>Tips for writing tests:</p>
+<ul>
+  <li>Component tests: put <code>// @vitest-environment happy-dom</code> on top and use <code>@testing-library/react</code>. Always <code>await act(async () =&gt; …)</code>: a plain <code>act</code> with Suspense hangs.</li>
+  <li>happy-dom has no layout: mock <code>getBoundingClientRect</code> when testing keyboard focus movement.</li>
+  <li>Manager tests often mock <code>../registry</code> with small fake content, and <code>../gameRef</code> with a fake <code>game</code> (see <code>battles.test.ts</code>).</li>
+</ul>
+
+<h2 id="browser-tests">Browser tests</h2>
+<pre><code class="language-sh">pnpm test            # unit tests (fast, no browser)
+pnpm test:browser    # plays the start of the game in a real headless browser
+pnpm test:built      # the same idea for the built web game (after pnpm build:web)</code></pre>
+<p><code>pnpm test:browser</code> starts its own dev server (port 5180), then at 1280×720 and at phone landscape 844×390 with touch: passes the title screen, starts a new game, plays the intro with confirm, walks, opens every engine window and checks that it fits the screen, crafts, shows a timer, the game-over screen, an event, fast travel, and saves and loads. Any error in the browser console fails the run. A picture of every step is written to <code>build/browser-test/</code>.</p>
+<p>The browser test always runs the normal game with maps, whatever <code>vnOnly</code> says in <code>src/content/config/mode.ts</code> (VN routes and the flowchart are checked too, since they work in either mode). <code>pnpm test:built</code> checks the build as it is: in VN-only mode it checks that the story starts and its lines advance, otherwise that the intro ends and the map is drawn. Rebuild after changing the mode.</p>
+<table>
+  <tr><th></th><th></th></tr>
+  <tr><td>Browser</td><td>The Chromium Playwright has downloaded (<code>pnpm exec playwright-core install chromium</code>), or any Chrome with <code>CHROME_PATH=/path/to/chrome</code>.</td></tr>
+  <tr><td>A game already running</td><td><code>GAME_URL=http://localhost:5173/ pnpm test:browser</code> uses it instead of starting a server (dev builds only: the test reads the game through the dev server).</td></tr>
+  <tr><td>Your own checks</td><td>Add steps to <code>scripts/browser/smoke.ts</code>: <code>withGame(page, "game.windows.open('shop')")</code> runs code with the real <code>game</code>, <code>check(screen, 'what', ok)</code> records the result.</td></tr>
+</table>
+
+<h2 id="quality">Lint, format, types</h2>
+<ul>
+  <li><b>Biome</b> lints and formats (TypeScript, CSS, JS, JSON). <code>pnpm lint</code> / <code>pnpm lint:fix</code>. Markdown is excluded. No Prettier or ESLint.</li>
+  <li><b>TypeScript 7</b> (the fast native version). Two configs: <code>tsconfig.json</code> (the game) and <code>tsconfig.node.json</code> (vite config, Electron, scripts, codegen, the editor extension).</li>
+  <li>Editor: install the recommended Biome extension. The project settings format on save and sort imports. For <code>.vn</code> files install the <a href="../story/vn.html#extension">VN extension</a>.</li>
+  <li>Files in <code>vite/</code> and <code>scripts/</code> run directly in Node (type stripping): no <code>enum</code>, <code>namespace</code> or constructor parameter properties there, and imports end in <code>.ts</code>.</li>
+</ul>
+
+<h2 id="building">Building</h2>
+<pre><code class="language-sh">pnpm build                # all targets below
+pnpm build:web            # build/web (static files, host anywhere)
+pnpm build:linux          # Linux AppImage
+pnpm build:win            # Windows installer + portable .exe (needs wine on Linux)
+pnpm build:desktop        # Linux + Windows
+pnpm build:android        # Android debug APK (needs JDK 21 + Android SDK)
+pnpm build:android-bundle # Android Play Store bundle (.aab), signed with android/keystore.properties
+pnpm build:android --lite # any build + --lite: smaller pictures and sounds for weaker devices (files end in -lite)
+pnpm vn:extension         # build/vn-extension/*.vsix</code></pre>
+<h3 id="electron">The desktop app</h3>
+<ul>
+  <li>Loads the built game through its own <code>app://game/</code> address (so sound and files work like on the web).</li>
+  <li>Saves are files in the user folder (<a href="saves.html#where">where</a>). Save export/import use native file dialogs. F11 toggles fullscreen. "Quit" shows in the title menu only here.</li>
+  <li>One instance at a time; minimum window 640×360; links open in the normal browser.</li>
+  <li>Icon: <code>src/content/assets/icon/icon.png</code> (see <a href="#icons">Icons</a>). Name, ids and version: <code>src/content/config/app.ts</code> (<a href="../index.html#first-steps">First steps</a>).</li>
+  <li>Electron downloads its own binary on first run.</li>
+</ul>
+<h3 id="icons">Icons and splash</h3>
+<p>Every icon is a file in <code>src/content/assets/icon/</code> (png, webp, jpg or svg). One kind is never made from another: each has its own file.</p>
+<table>
+  <tr><th>File</th><th>Used for</th></tr>
+  <tr><td><code>icon.png</code></td><td>Browser tab, desktop window, desktop installers (square, 512×512 is good)</td></tr>
+  <tr><td><code>icon.square.*</code></td><td>Android launcher icon, older phones (48 dp)</td></tr>
+  <tr><td><code>icon.round.*</code></td><td>Android launchers that show round icons (48 dp)</td></tr>
+  <tr><td><code>icon.foreground.*</code></td><td>Android adaptive icon, front layer: 108 dp, the phone cuts it to its own shape, so keep the art inside the middle 66 dp</td></tr>
+  <tr><td><code>icon.background.*</code></td><td>Optional: the adaptive icon's back layer. Without it, the colour <code>iconBackground</code> in <code>app.ts</code></td></tr>
+  <tr><td><code>icon.monochrome.*</code></td><td>Optional: Android 13 themed icons (one colour, the phone tints it)</td></tr>
+</table>
+<ul>
+  <li>Android needs each kind at 5 sizes (48 dp = 48, 72, 96, 144, 192 px; 108 dp = 108 … 432 px). Each is scaled down from the biggest file of that kind; an svg is drawn sharp at every size. Icons are only ever made smaller: if every file is too small, the build says which size is needed.</li>
+  <li>A hand-made size wins: <code>icon.round.96.png</code> is used as it is wherever exactly 96 px are needed. Its real size must match its name.</li>
+  <li><code>pnpm build:android</code> makes them (and skips it when nothing changed). Building from Android Studio instead: run <code>pnpm icons</code> first (also after cloning). The made files in <code>android/…/mipmap-*</code> are not committed.</li>
+  <li>Splash: every start-up screen (Android, the desktop window, the browser page) is one plain colour until the game draws: <code>splashBackground</code> in <code>app.ts</code>. No picture or icon is shown there; your own boot screens (<code>src/content/boot/</code>) come right after.</li>
+</ul>
+
+<p>In content: <code>import { isElectron, isAndroid, canQuit, quit, setFullscreen } from '@/core/platform'</code> for system-specific features. They fall back gracefully in the browser.</p>
+
+<h3 id="android">Android</h3>
+<ul>
+  <li>Capacitor wraps <code>build/web</code> in an Android app. The native project is <code>android/</code>; open it in Android Studio to run it on a device.</li>
+  <li>Needs JDK 17 to 24 (21 recommended) and the Android SDK with accepted licences. The build finds both in the usual folders, or uses <code>JAVA_HOME</code> / <code>ANDROID_HOME</code>.</li>
+  <li>Saves are files in the app's private folder (<a href="saves.html#where">where</a>). Export opens the share sheet, import the system file picker.</li>
+  <li>The Back button (or back gesture) acts like <kbd>Esc</kbd>: it closes the front window, and opens the menu on the map. It never closes the app. Change what it does with <code>backButton</code> in <a href="../interface/input.html#input"><code>src/content/config/input.ts</code></a>.</li>
+  <li>Play Store: <code>pnpm build:android-bundle</code> makes <code>build/dist/&lt;id&gt;.aab</code>. Signing needs <code>android/keystore.properties</code> (never committed):</li>
+</ul>
+<pre><code class="language-sh"># make the key once, keep it safe (losing it = no more updates on Play)
+keytool -genkey -v -keystore android/release.jks -alias game -keyalg RSA -keysize 2048 -validity 10000
+# android/keystore.properties
+storeFile=release.jks
+storePassword=…
+keyAlias=game
+keyPassword=…</code></pre>
+<p>The web build runs once, even when you build several targets. A target that fails doesn't stop the others; the summary at the end lists it. Installers and the APK end up in <code>build/dist</code>.</p>
+
+<h3 id="big-builds">Big games</h3>
+<table>
+  <tr><th>Target</th><th>Limit</th><th>What the build does</th></tr>
+  <tr><td>Windows</td><td>Installer and portable .exe: 2 GB</td><td>Over 1.7 GB it makes a <code>.zip</code> of the game folder instead (Steam ships folders anyway).</td></tr>
+  <tr><td>Desktop (all)</td><td>none</td><td>Pictures, sounds and videos stay as plain files next to <code>app.asar</code>, so an update only changes the files that changed (small Steam patches).</td></tr>
+  <tr><td>Play Store</td><td>500 MB base, 1.5 GB per asset pack, 4 GB in all</td><td>Over 450 MB, media files move into install-time asset packs. Play installs them with the app and the game reads them at the same paths. Over 4 GB the build stops (download-later packs aren't supported yet).</td></tr>
+  <tr><td>Android APK</td><td>4 GB</td><td>Stops with a message; use the bundle.</td></tr>
+</table>
+<p>Converted images (<a href="../world/art.html#big-games">art → big games</a>) keep all of these much further away.</p>
+
+<h2 id="security">What the built game may load (security policy)</h2>
+<p>Every built game (web, desktop, Android) carries a Content-Security-Policy: the browser inside it refuses to load or run anything the policy does not list. By default that is only the game's own files, so a bug or a bad mod cannot make the game run code from elsewhere. <code>pnpm dev:*</code> has no policy (hot reload needs more freedom).</p>
+<pre><code>// src/content/config/security.ts
+export default defineSecurity({
+  contentSecurityPolicy: {
+    enabled: true,
+    allow: {
+      connect: ['https://api.example.com'],   // fetch() / WebSocket
+      images: [], media: [], fonts: [],       // files from other sites
+      styles: [], scripts: [], frames: [],
+    },
+    allowEval: false,                         // true only for a library that needs eval
+  },
+})</code></pre>
+<ul>
+  <li>Something from another site does not load in the built game, and the console says "Refused to … because it violates the Content Security Policy": add its address to the matching list.</li>
+  <li>Check a build with <code>pnpm build:web</code> then <code>pnpm test:built</code>: it opens the built game in a headless browser, plays the start of the game and fails on any console error, including a blocked file.</li>
+  <li>A PixiJS add-on that builds shaders may need <code>allowEval: true</code>; the engine itself does not (it loads <code>pixi.js/unsafe-eval</code>, PixiJS's own way to work without eval).</li>
+</ul>
+
+<h2 id="media-lock">Locked media (encrypted pictures and sounds)</h2>
+<p>Built games ship their pictures, sounds and videos encrypted, so players can't just open them from the game folder. The game unlocks each file as it loads it; nothing in your content changes. <code>pnpm dev:*</code> never locks anything.</p>
+<pre><code>// src/content/config/protect.ts
+export default defineProtect({
+  media: {
+    enabled: true,
+    key: 'any text, made up once',    // changing it later = every media file changes in the next update
+    extensions: ['webp', 'png', 'ogg', 'flac', 'webm', /* … */],
+    skip: ['icon.png'],               // stays plain (the browser reads the tab icon itself)
+  },
+})</code></pre>
+<ul>
+  <li><strong>It is not real protection.</strong> The game has to unlock its own files, so the key is inside the game. Every engine has this limit (Godot, RPG Maker, KiriKiri). It stops casual browsing. Someone who is determined can still get the files out.</li>
+  <li>Very small files (under 4 KB) are built into the game's code instead of being separate files, and those are not locked.</li>
+  <li>Each file is locked on its own, with the same file names, and the same file always locks to the same bytes. A Steam update still only changes the files that changed.</li>
+  <li>Desktop: the app unlocks files while reading them. Web and Android: a service worker (<code>media-lock.js</code>) does it. On the web the game must be served over <code>https://</code> or from <code>localhost</code>, and the browser must allow service workers (some private modes don't).</li>
+  <li>Check a build with <code>pnpm build:web</code> then <code>pnpm test:built</code>: it also checks that a picture, a video and a hard reload all get unlocked files.</li>
+</ul>
+
+<h2 id="pitfalls">Pitfalls</h2>
+<table>
+  <tr><th>Symptom</th><th>Cause / fix</th></tr>
+  <tr><td>"Maximum update depth exceeded" in a window</td><td>A <code>useGameData</code> selector builds a new array/object. Select the existing object and derive in the component.</td></tr>
+  <tr><td>Import cycle / "cannot access before initialization"</td><td>An up-front file (character, item, prop, quest…) imports <code>game</code>. Use the <code>game</code> from the hook's context.</td></tr>
+  <tr><td>Circular type errors (TS7022) between maps/events</td><td>Hooks are typed <code>=&gt; void</code> on purpose; don't annotate them as <code>Promise&lt;void&gt;</code>. Keep <code>save/data.ts</code> free of game imports.</td></tr>
+  <tr><td>A Tiled tileset won't load</td><td>Saved as <code>.tsx</code>: export it as <code>.tsj</code> (JSON) or embed it.</td></tr>
+  <tr><td>Text stays English</td><td>Not found by the scanner (template string, variable): see <a href="../interface/translations.html#finding">Translations</a>. Or a toast without <code>game.t()</code>.</td></tr>
+  <tr><td>A mid-scene save loads differently</td><td><code>Math.random()</code> in the event: use <code>random()</code> from the context.</td></tr>
+  <tr><td>Works in dev, but a file or script is blocked in the built game</td><td>The security policy: see <a href="#security">what the built game may load</a>.</td></tr>
+  <tr><td>No sound</td><td>No key pressed yet (browser rule), or the volume sliders in Settings.</td></tr>
+  <tr><td><code>game.events.start</code> never resolves</td><td>Awaited from inside a running event: it's queued after the current one. Use <code>event(id)</code> instead.</td></tr>
+  <tr><td>Functions named <code>use…</code> get hook lint errors</td><td>Biome treats every <code>useX</code> as a React hook. Pick another name.</td></tr>
+</table>
+</main>
+</div>
+</body>
+</html>

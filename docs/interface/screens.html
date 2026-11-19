@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screens &amp; windows · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Screens &amp; windows</h1>
+<p class="lead">Everything that isn't the map: the title screen, windows, minigames and the HUD. <a href="input.html">Input</a>, <a href="look.html">the look</a> and <a href="settings.html">settings</a> have their own pages.</p>
+<h2 id="start">Starting the game</h2>
+<p><code>src/content/start.ts</code> runs when the game loads, and again on "Return to title". It decides what the player sees first: <a href="#boot">boot screens</a> (first start only), "press any key", the title screen's <a href="#title-entrance">entrance</a>, then the menu.</p>
+<pre><code>export async function start(game: Game) {
+  game.maps.preload('heaven/before_god')  // the first map: load in the background while the title is up
+  await game.title.boot()                 // boot screens, only the first time after launch
+  await game.title.show()                 // "press any key" (unlocks sound), then the entrance
+
+  for (;;) {
+    const latest = game.save.latest()
+    const pick = await game.title.menu({
+      ...(latest ? { continue: 'Continue' } : {}),
+      new: 'New game',
+      load: 'Load game',
+      ...(game.extras.anyUnlocked() ? { extras: 'Extras' } : {}),
+      settings: 'Settings',
+      ...(canQuit ? { quit: 'Quit' } : {}),   // desktop app only
+    })
+    if (pick === null) return                // a save was loaded from the Load window
+    if (pick === 'continue' &amp;&amp; latest) return game.save.load(latest.slot)
+    if (pick === 'new') return game.save.newGame()
+    if (pick === 'load') game.windows.open('saves', { mode: 'load' })
+    if (pick === 'settings') game.windows.open('settings')
+    if (pick === 'extras') await game.minigames.open('extras')
+    if (pick === 'quit') quit()
+  }
+}</code></pre>
+<ul>
+  <li><code>game.title.menu({ key: label })</code> resolves with the picked key (labels are translated), or <code>null</code> if the title screen went away meanwhile.</li>
+  <li><code>src/content/ui/TitleFrame.tsx</code> is the frame every <a href="#title-variants">title screen variant</a> shares: <code>&lt;TitleArt /&gt;</code> (the variant, behind), the prompt and menu on the right (so short phone screens fit), <code>&lt;TitleSwitcher /&gt;</code> bottom left and the version. Place <code>&lt;TitleMenu /&gt;</code> anywhere; it fills its box up to 320px wide. The "press any key" text (on black, before the art) adapts to keyboard, gamepad or touch.</li>
+  <li>Windows open above the title screen (Load, Settings, Extras).</li>
+</ul>
+
+<h3 id="boot">Boot screens</h3>
+<p>Notices and logos shown when the game starts, before "press any key". Every <code>.tsx</code> file in <code>src/content/boot/</code> is one screen, found automatically. They play one after another (lowest <code>order</code> first, then by file name): fade in from black, stay, fade to black, next. They never play again on "Return to title".</p>
+<pre><code>// src/content/boot/warning.tsx
+export default defineBoot({
+  order: 1,
+  skippable: false,   // true = confirm (Enter, Space, pad A), a click or a tap ends it early
+  fadeIn: 600,        // ms
+  steps: 5000,        // ms on screen
+  fadeOut: 600,       // ms
+  preload: [picture], // optional: imported files, loaded before the first boot screen
+  screen: () =&gt; &lt;Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}&gt;…&lt;/Box&gt;,
+})</code></pre>
+<ul>
+  <li><b>Stills:</b> <code>steps: [1200, 2000]</code> gives the screen a <code>step</code> prop: 0 for 1.2 s, then 1 for 2 s. Draw more as it goes up (<code>step &gt;= 1 &amp;&amp; …</code>); see <code>boot/logo.tsx</code>.</li>
+  <li><code>skippable: false</code> can never be skipped, by any key, button, click or tap. A skipped screen fades out quickly and the next one starts; each screen needs its own press.</li>
+  <li>The title screen loads in the background meanwhile. No files in the folder = no boot screens. A file starting with <code>_</code> is a helper, not a screen.</li>
+</ul>
+
+<h3 id="title-entrance">Entrance and menu</h3>
+<p>After "press any key" the title art plays its entrance; only when that ends do the menu, the switcher and the version appear. The menu buttons then fade in one after another, top to bottom, and cannot be used (click, tap, keys, pad) until the last one is fully in.</p>
+<pre><code>// src/content/titles/&lt;id&gt;/index.ts: how long the entrance takes
+intro: 1200,            // ms, or stills like a boot screen: [1000, 1600]
+
+// src/content/titles/&lt;id&gt;/Screen.tsx
+export default function Starlit({ step }: TitleScreenProps) {
+  return &lt;&gt;&lt;Sky /&gt;{step &gt;= 1 &amp;&amp; &lt;Logo /&gt;}&lt;/&gt;   // step = number of steps once it is over
+}
+
+// src/content/ui/TitleFrame.tsx: how the buttons appear
+&lt;TitleMenu effect="right" distance={16} duration={350} stagger={110} /&gt;</code></pre>
+<ul>
+  <li><code>effect</code>: <code>'fade'</code>, or <code>'left'</code> / <code>'right'</code> / <code>'top'</code> / <code>'bottom'</code> (fades in while sliding <code>distance</code> px from that side). <code>duration</code> = one button, <code>stagger</code> = delay to the next, both ms.</li>
+  <li><b>Skipping:</b> confirm, a click or a tap during the entrance jumps to the end: the screen gets its last <code>step</code>, its CSS animations jump to their final frame, and the menu is fully visible and usable at once. During the menu's fade-in it shows the menu in full. The skipping press never picks a menu item.</li>
+  <li><b>Short screens:</b> <code>&lt;TitleMenu sx={…} buttonSx={…} /&gt;</code> style the list and each button. <code>TitleFrame.tsx</code> uses them with <code>SHORT_SCREEN</code> for smaller buttons on a phone held sideways, so 7 buttons fit a 375px-tall screen; a longer menu scrolls.</li>
+  <li>No <code>intro</code> = the menu starts appearing right away. The switcher and version fade in with it (<code>titleMenuIn</code> in <code>TitleFrame.tsx</code>).</li>
+</ul>
+
+<h3 id="title-variants">Title screen variants</h3>
+<p>Like many visual novels, the title screen can change as the story goes on (an ending reached, a secret found). Each variant is a folder in <code>src/content/titles/</code>, found automatically:</p>
+<pre><code>// src/content/titles/good_ending/index.ts
+export default defineTitle({
+  name: 'After the storm',            // shown in the switcher
+  order: 2,                           // switcher order, oldest first
+  screen: () =&gt; import('./Screen'),   // the art + entrance, loaded only when needed
+  preload: [logo],                    // files from outside this folder
+  music: 'music/title_2',             // optional, from src/content/audio
+})
+
+// src/content/titles/good_ending/Screen.tsx: draws behind the menu, animates in when it appears
+export default function GoodEnding({ phase }: TitleScreenProps) { … }
+
+// anywhere (event, map, minigame): unlocked for good, across all saves
+game.title.unlock('good_ending')</code></pre>
+<ul>
+  <li>The first one has <code>unlocked: true</code> (<code>titles/default</code>). A new unlock becomes the current title at once; unlocking it again later keeps the player's own pick. Unlocks and the pick live in the <a href="../systems/saves.html#persistent">persistent data</a>, not in save slots.</li>
+  <li><b>Entrance:</b> the screen component plays its animation (and its <code>intro</code> steps, see <a href="#title-entrance">above</a>) when it mounts: after "press any key" and when the player switches to it. Switching cross-fades the old one out.</li>
+  <li><b>Switcher</b> (bottom left, once two are unlocked, not while "press any key" shows): ◀ name 2/3 ▶. Tap the arrows, or Q / R (LB / RB on a pad).</li>
+  <li><b>Preloading:</b> before a variant shows, its code and every image, sound and video in its folder (plus <code>preload</code> and <code>music</code>) are downloaded and decoded, and fonts are ready. A dark cover shows meanwhile (a spinner after 0.4 s); keys are ignored until it is ready. The other unlocked variants then load in the background, so switching is instant; a switch before that waits on the old screen, never on a blank one. Everything is let go when the game starts.</li>
+  <li>Keep a variant's pictures and sounds in its own folder (or list them in <code>preload</code>): anything else loads only when drawn, and can pop in during the entrance.</li>
+  <li><code>game.title</code>: <code>unlock(id)</code>, <code>select(id)</code>, <code>current()</code>, <code>unlocked()</code>, <code>isUnlocked(id)</code>, <code>lock(id)</code> (testing). The dev panel has a <b>Title screens</b> section to unlock, lock and show each one.</li>
+</ul>
+
+<h2 id="windows">Windows</h2>
+<pre><code>// src/content/windows/notes/index.tsx  → the window 'notes'
+import { Button, Typography } from '@mui/material'
+import { defineWindow, type WindowProps } from '@/core/define'
+import { useLang } from '@/core/lang'
+
+function Notes({ params, close }: WindowProps&lt;{ topic: string }&gt;) {
+  const t = useLang()
+  return (
+    &lt;&gt;
+      &lt;Typography&gt;{t('Notes about {topic}', { topic: params.topic })}&lt;/Typography&gt;
+      &lt;Button onClick={close}&gt;{t('Close')}&lt;/Button&gt;
+    &lt;/&gt;
+  )
+}
+
+export default defineWindow({ title: 'Notes', component: Notes, width: 420, modal: false, closable: true })</code></pre>
+<pre><code>game.windows.open('notes', { topic: 'slimes' })   // params typed from WindowProps
+game.windows.toggle('inventory'); game.windows.close('notes'); game.windows.closeAll()
+game.windows.isOpen('notes')</code></pre>
+<table>
+  <tr><th>Option</th><th></th></tr>
+  <tr><td><code>title</code></td><td>Title bar text (translated)</td></tr>
+  <tr><td><code>width</code></td><td>Minimum width (number = px). The window grows wider if its content needs it, never past the screen. Default 420.</td></tr>
+  <tr><td><code>modal</code></td><td>Dims everything behind and blocks clicks to it</td></tr>
+  <tr><td><code>closable</code></td><td>Shows the × and lets cancel close it (default true)</td></tr>
+  <tr><td><code>transition</code></td><td>How it comes in and goes out, like a boot screen's fades: <code>{ in: 180, out: 140, effect: 'slideUp', distance: 24, ease: 'ease' }</code>. Effects: <code>fade</code> (default), <code>scale</code>, <code>slideUp</code>, <code>slideDown</code>, <code>slideLeft</code>, <code>slideRight</code>. Left out: it appears and goes at once (the default). A closing window takes no input while it goes; "Reduce motion" turns every effect into a fade.</td></tr>
+</table>
+<ul>
+  <li>Windows stack. Opening one that is already open brings it to the front. Click a window to focus it. Every window opens in the middle of the screen and sizes itself to its content (it can't be dragged); content taller than the screen scrolls.</li>
+  <li>Keys: cancel (and menu) closes the front window; arrows/D-pad move focus between buttons (by screen position); confirm presses the focused button, or flips the focused switch / checkbox (Enter too, not only Space).</li>
+  <li>Use Material UI components inside. Shared helper components go in a folder starting with <code>_</code> (<code>windows/_shared</code>).</li>
+</ul>
+<p>Windows that come with the game: <code>menu</code> (the <a href="input.html#pause-menu">pause menu</a>), <code>inventory</code>, <code>quests</code>, <code>party</code>, <code>journal</code>, <code>shop</code>, <code>saves</code>, <code>settings</code>, <code>confirm</code> (the question behind <a href="../systems/saves.html#leaving"><code>game.dialog.ask</code></a>), <code>textinput</code> (behind <code>game.dialog.prompt</code> and the event command <a href="../story/events/flow.html#input"><code>input()</code></a>) and <code>credits</code> (lists the names in <code>src/content/credits.ts</code>). They're content: change them freely. Extras is a full-screen <a href="#minigames">minigame</a> (<code>src/content/minigames/extras</code>).</p>
+
+<h3 id="window-slot">Inside every window: Window.tsx</h3>
+<p><code>src/content/ui/Window.tsx</code> draws the inside of every window (the ones above too): the title bar, then the window's own component inside <code>&lt;WindowContent&gt;</code>. The frame around it (picture, background) is <code>window</code> / <code>panel</code> in <a href="look.html#look-boxes"><code>look/index.ts</code></a>.</p>
+<pre><code>// src/content/ui/Window.tsx
+import { WindowContent } from '@/core/ui/WindowContent'
+
+export function Window({ id, title, closable, isTop, close, children }: WindowSlotProps) {
+  return (
+    &lt;&gt;
+      &lt;TitleBar … /&gt;
+      &lt;WindowContent sx={{ p: 2, overflowX: 'hidden', overflowY: 'auto' }}&gt;{children}&lt;/WindowContent&gt;
+      {id === 'settings' &amp;&amp; (   // a logo in the bottom right corner, Settings only
+        &lt;Box component="img" src={logo} alt="" sx={{ position: 'absolute', right: 12, bottom: 12, width: 48, pointerEvents: 'none' }} /&gt;
+      )}
+    &lt;/&gt;
+  )
+}</code></pre>
+<ul>
+  <li><code>&lt;WindowContent&gt;</code> must stay, once: it is where keys, buttons and focus reach the window (the first control is focused, a controller scrolls it). Its <code>sx</code> (padding, scrolling) is yours. Left out, the game warns in the console (dev only).</li>
+  <li>The window is <code>position: relative</code>: <code>position: 'absolute'</code> sits on the window itself. Anything outside <code>&lt;WindowContent&gt;</code> (a footer, a logo) doesn't scroll away.</li>
+  <li>Props: <code>id</code> (which window), <code>title</code> (translated; empty while it loads), <code>closable</code>, <code>isTop</code> (the front window), <code>close()</code>, <code>children</code>. Types: <code>WindowSlotProps</code> in <code>@/core/slots</code>.</li>
+</ul>
+
+<h3 id="engine-windows">Windows the engine opens</h3>
+<p>The engine opens some content by its folder name. Each may look and work however you like, but keep the name:</p>
+<ul>
+  <li><b>Always</b>: <code>menu</code> (the ☰ button, Back), <code>confirm</code> (yes / no questions), <code>saves</code> (saving and loading). <code>pnpm gen</code>, the dev server and builds stop with a clear message if one is missing.</li>
+  <li><b>Only for a feature you use</b>: <code>shop</code> (<code>game.shops.open()</code>), <code>crafting</code>, <code>travel</code> (fast travel), <code>gameover</code>, <code>textinput</code> (<code>game.dialog.text()</code>), and the <code>battle</code> minigame. Without one, using its feature shows an error naming the missing folder.</li>
+</ul>
+<p>The list is <code>src/core/required.ts</code>.</p>
+
+<h2 id="minigames">Minigames</h2>
+<p>The battle screen focuses what the player is likely to press: Attack on your turn, your own character when healing, the first enemy when attacking, and Continue when the battle ends.</p>
+<pre><code>// src/content/minigames/coin_flip/index.tsx
+function CoinFlip({ params, finish }: MinigameProps&lt;{ bet: number }, 'win' | 'lose'&gt;) {
+  return &lt;Button onClick={() =&gt; finish(Math.random() &lt; 0.5 ? 'win' : 'lose')}&gt;Flip&lt;/Button&gt;
+}
+export default defineMinigame({ component: CoinFlip, quitResult: 'lose' })   // cancel quits with 'lose'
+
+const result = await game.minigames.start('coin_flip', { bet: 10 })     // 'win' | 'lose'</code></pre>
+<ul>
+  <li>A minigame covers the whole screen and fades in/out. <code>finish()</code> counts only once.</li>
+  <li>Without <code>quitResult</code> the player must finish it.</li>
+  <li>Real-time games: <code>useGameLoop((dt) =&gt; …)</code> from <code>@/core/minigame/useGameLoop</code>. It pauses while a window is on top. Keep the game state in refs and draw to a canvas; read input with <code>game.input.isDown('left')</code>. See <code>minigames/dodge</code>.</li>
+  <li>The battle screen is a minigame too (<code>minigames/battle</code>).</li>
+  <li><code>menuButton: false</code> in <code>defineMinigame</code> hides the pause menu button (☰) while it runs (Extras does).</li>
+  <li><code>game.minigames.open(id, params)</code> opens one as part of the game's own UI (Extras does): not a step of a scene, so never part of a mid-scene save; a running scene waits under it. It does nothing while another minigame is up.</li>
+  <li><code>game.minigames.finish(result)</code> ends the running one from outside, as if it called <code>finish(result)</code> (for callbacks you pass in its params).</li>
+  <li>Started from the title screen, it is drawn over the title (the <a href="../story/routes.html#after-stories">After Stories</a> screen is one).</li>
+</ul>
+
+<h2 id="ui-files">UI files: src/content/ui</h2>
+<p>The engine draws its screens through these files: each lays out and styles one part, and the engine keeps the logic (timing, input, saving). Colours and frames are also in <a href="look.html">the look</a>; these files are for layout, order, icons and extra pieces. Small wrappers from <code>@/core/ui/…</code> carry what the engine needs (keys, scrolling, touch handling): keep them, their <code>sx</code> is yours. Prop types: <code>@/core/slots</code>.</p>
+<table>
+  <tr><th>File</th><th>What it lays out</th><th>The engine keeps</th></tr>
+  <tr><td><code>TextDialog.tsx</code></td><td>The chat box: where its parts sit (<a href="../story/events/stage.html#chat-box-layout">more</a>)</td><td><code>&lt;ChatBoxPlace&gt;</code>, <code>&lt;ChatBoxFrame&gt;</code>, <code>&lt;DialogTextArea&gt;</code></td></tr>
+  <tr><td><code>NameTag.tsx</code></td><td>The speaker's name on the box (gets <code>name</code>, <code>speaker</code>, <code>color</code>, the character's own <code>characterLook</code>)</td><td>When it shows (not for narration or full pages)</td></tr>
+  <tr><td><code>ContinueMark.tsx</code></td><td>The ▼ "press to continue" mark</td><td>When it shows (once the line has typed out)</td></tr>
+  <tr><td><code>SceneToolbar.tsx</code></td><td>The toolbar's buttons: words or icons, order (<a href="../story/events/stage.html#toolbar">more</a>)</td><td>What each button does, <code>&lt;SceneToolbarButton&gt;</code>, <code>&lt;SceneToolbarPlace&gt;</code></td></tr>
+  <tr><td><code>VoiceBar.tsx</code></td><td>The bar showing how long the line's voice still plays (<a href="../story/events/stage.html#voice-bar">more</a>)</td><td>When it shows, the voice's length</td></tr>
+  <tr><td><code>Choice.tsx</code></td><td>A choice's answers, its timer, the toolbar while no line shows (<a href="../story/events/stage.html#choice-layout">more</a>)</td><td><code>&lt;ChoiceList&gt;</code> (keys, nothing focused at first), <code>&lt;ChoiceButton&gt;</code></td></tr>
+  <tr><td><code>Log.tsx</code></td><td>The log (backlog): panel, line layout, the line buttons' symbols</td><td><code>&lt;LogList&gt;</code> (scrolling, wheel to close), <code>&lt;LogButton&gt;</code> (◀ ▶ step, confirm presses); the buttons' actions</td></tr>
+  <tr><td><code>ChapterCard.tsx</code></td><td>The full-screen chapter card (fade with <code>shown</code> / <code>fadeMs</code>)</td><td>Timing, skipping (click, tap, confirm)</td></tr>
+  <tr><td><code>Toast.tsx</code></td><td>game.toast() messages: where, how they look</td><td>How long each stays, how many (<code>config/screen.ts</code> <code>toast</code>)</td></tr>
+  <tr><td><code>Loading.tsx</code></td><td><code>MapLoading</code>: the fade between maps and the loading screen in it (<code>phase</code>, <code>progress</code>); <code>Loading</code>: the spinner while a window or minigame loads; <code>ReplayCover</code>: the cover while a scene runs again up to where a save was made</td><td>When and how long (<code>config/screen.ts</code> timings)</td></tr>
+  <tr><td><code>Timers.tsx</code></td><td>On-screen timers: where, label and digits</td><td><code>&lt;TimerFrame&gt;</code> (<code>data-warning</code> in the warning time), <code>&lt;TimerDigits&gt;</code> (written ten times a second)</td></tr>
+  <tr><td><code>TouchControls.tsx</code></td><td>The joystick and touch buttons: where, sizes, symbols</td><td><code>&lt;Joystick&gt;</code>, <code>&lt;TouchButton&gt;</code> (the touch handling); which buttons (<code>config/input.ts</code>)</td></tr>
+  <tr><td><code>ImageViewer.tsx</code></td><td>The controls over a full-screen picture (gallery): ✕, the dots for variants, caption, hints. Anything clickable must be a button</td><td>The picture, zoom, pan, swipe, keys (<code>config/screen.ts</code> <code>imageViewer</code>)</td></tr>
+  <tr><td><code>MovieSkip.tsx</code></td><td>The skip button over a movie</td><td>When it shows (after a tap or key, skippable movies only; how long: <code>skip.movieButtonMs</code> in <code>scenes.ts</code>)</td></tr>
+  <tr><td><code>RotateCover.tsx</code></td><td>The "turn your phone sideways" cover</td><td>When it shows (<code>config/screen.ts</code> <code>landscapeOnly</code>, phone held upright), on top of everything</td></tr>
+  <tr><td><code>TitleSwitcher.tsx</code></td><td>Switching between unlocked title screens (◀ name ▶; placed by <code>TitleFrame.tsx</code>)</td><td>When it shows (two or more unlocked), the tab keys / shoulder buttons</td></tr>
+  <tr><td><code>CrashNotice.tsx</code></td><td>The notice in place of a crashed window, map or event (gets <code>label</code>, <code>message</code>, <code>dev</code>, <code>action</code>: Close or Try again)</td><td>Catching and reporting the crash; a plain text notice if this file crashes too</td></tr>
+  <tr><td><code>Window.tsx</code></td><td>Inside every window's frame (<a href="#window-slot">more</a>)</td><td><code>&lt;WindowContent&gt;</code></td></tr>
+  <tr><td><code>Hud.tsx</code>, <code>MenuButton.tsx</code>, <code>TitleFrame.tsx</code></td><td>Over the map (money, minimap, shortcut keys); the ☰ pause menu button; the title screen's frame</td><td></td></tr>
+</table>
+
+<h2 id="hud">HUD and toasts</h2>
+<p><code>src/content/ui/Hud.tsx</code> is drawn over the map. It shows the money and sets up the shortcut keys; every window is reached from the <a href="input.html#pause-menu">pause menu</a>, so no device needs a key it doesn't have. Edit it freely (your own buttons, bars, a clock):</p>
+<pre><code>useAction('inventory', () =&gt; game.windows.toggle('inventory'), { layers: ['map', 'windows'] })
+useAction('menu', () =&gt; game.windows.toggle('menu'))   // map only: over a window, menu closes the front one
+&lt;ActionHint action="inventory" /&gt;     // shows "E", "X", "□"… for the device in use</code></pre>
+<pre><code>game.toast(game.t('Saved!'))                  // a short message at the top
+game.toast(game.t('Found a key'), { icon: keyIcon, ms: 4000 })
+game.toast(game.t('Legendary!'), { params: { style: 'gold' } })   // your own params, for Toast.tsx</code></pre>
+<div class="note"><code>game.toast()</code> shows text as given: translate it yourself with <code>game.t()</code>. (Toasts the engine makes, like "New quest", are translated already.)</div>
+<p>Where toasts show and how they look: <code>src/content/ui/Toast.tsx</code>. Every toast has a <code>kind</code> and <code>params</code>, so each kind can look different: fill in its entry in <code>byKind</code>, or read the params in <code>byParams</code>. All kinds and their params are listed in <code>ToastKinds</code> (<code>src/core/slots.ts</code>). A <code>game.toast()</code> without a kind is a <code>message</code>.</p>
+<table>
+  <tr><th>Kind</th><th>Params</th><th>From</th></tr>
+  <tr><td><code>message</code></td><td>whatever you pass</td><td><code>game.toast()</code>, small engine notes</td></tr>
+  <tr><td><code>item</code></td><td><code>item</code>, <code>count</code></td><td><code>items.add(…, { notify })</code></td></tr>
+  <tr><td><code>money</code></td><td><code>amount</code></td><td><code>money.add(…, { notify })</code></td></tr>
+  <tr><td><code>questNew</code>, <code>questDone</code></td><td><code>quest</code></td><td>quest start / complete</td></tr>
+  <tr><td><code>achievement</code>, <code>ending</code>, <code>codex</code></td><td><code>achievement</code>, <code>ending</code>, <code>entry</code></td><td>first unlock</td></tr>
+  <tr><td><code>recipe</code>, <code>place</code>, <code>chapter</code></td><td><code>recipe</code>, <code>place</code>, <code>chapter</code></td><td>learned, found, begun</td></tr>
+  <tr><td><code>partyJoin</code>, <code>levelUp</code>, <code>skillLearned</code></td><td><code>character</code> (+ <code>level</code> / <code>skill</code>)</td><td>party changes with <code>notify</code></td></tr>
+  <tr><td><code>relationship</code></td><td><code>character</code>, <code>change</code>, <code>value</code></td><td><code>relationships.change(…, { notify })</code></td></tr>
+  <tr><td><code>save</code></td><td><code>result</code>: quickSaved, quickSaveFailed, noQuickSave, loadFailed, storageFull</td><td>quick save / load, full storage</td></tr>
+  <tr><td><code>screenshot</code></td><td><code>where</code> (or null)</td><td>F8</td></tr>
+  <tr><td><code>error</code></td><td><code>where</code>, <code>message</code></td><td>errors nothing caught</td></tr>
+</table>
+
+<h3 id="hud-numbers">Timings</h3>
+<p>Fades and waits are in <code>content/config/screen.ts</code>: <code>timings</code> (map fade, loading-screen delay, minigame fade, title fades, boot skip) and <code>toast</code> (<code>ms</code>, <code>max</code> at once). Stick deadzone, key repeat and the touch joystick size are in <code>content/config/input.ts</code> (<code>feel</code>).</p>
+
+<h3 id="screenshots">Screenshots</h3>
+<pre><code>// src/content/config/screen.ts
+screenshot: { width: 1920, format: &#39;png&#39;, quality: 0.92, prefix: &#39;screenshot&#39; },   // width 0 = the size on screen
+
+await game.screenshot()     // true when a picture was saved</code></pre>
+<p>F8 by default (action <code>screenshot</code>, rebindable in Settings → Controls). Desktop: saved in the Pictures folder, in a folder named after the game. Android: the share sheet opens. Browser: it downloads. Touch controls and toasts are left out of the picture.</p>
+
+<h3 id="errors">When something breaks</h3>
+<p>Every layer (map, HUD, event, title, each window and minigame) has its own safety net: a crash shows a small notice with <b>Try again</b> or <b>Close</b> instead of a blank screen. Errors nothing caught, and event scripts that throw, are logged and shown as a toast.</p>
+<pre><code>// src/content/config/screen.ts
+errors: { tellPlayer: true, toastMs: 6000, toastEveryMs: 4000 },</code></pre>
+<p>While developing, the toast carries the real message; players of the finished game see “Something went wrong” (or nothing with <code>tellPlayer: false</code>). The last 20 errors are in the dev panel.</p>
+
+</main>
+</div>
+</body>
+</html>

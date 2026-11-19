@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Audio</h1>
+
+<p class="lead">Music, sound effects, voices and ambient loops, with crossfades and per-type volumes. Drop files in a folder and use their ids.</p>
+
+<h2 id="files">Sound files</h2>
+<p>Put files anywhere under <code>src/content/audio/</code>. The id is the path without the extension:</p>
+<table>
+  <tr><th>File</th><th>Id</th></tr>
+  <tr><td><code>audio/music/town.ogg</code></td><td><code>'music/town'</code></td></tr>
+  <tr><td><code>audio/sfx/click.wav</code></td><td><code>'sfx/click'</code></td></tr>
+  <tr><td><code>audio/voice/en/anna/hello/anna_0001.mp3</code></td><td><code>'voice/en/anna/hello/anna_0001'</code> (a voice clip: <a href="../story/events/scripts.html#voices">Voices</a>)</td></tr>
+</table>
+<ul>
+  <li>Formats: wav, aiff, flac, ogg, opus, mp3, m4a, aac, mp4, webm. Keep your best quality (WAV is fine): the build turns WAV/AIFF into lossless FLAC and makes Opus for the lite build (<a href="../world/art.html#big-games">media settings</a>).</li>
+  <li>Ids are typed (<code>AudioId</code>): a wrong one is an error.</li>
+  <li>Nothing downloads until it's played or preloaded.</li>
+  <li>The current sounds are placeholders made with a synth script; replace the files and keep the names.</li>
+</ul>
+
+<h2 id="playing">Playing sounds</h2>
+<pre><code>game.audio.sfx('sfx/click')                          // fire and forget
+game.audio.sfx('sfx/hit', { volume: 0.6, rate: 1.2 })  // rate also changes the pitch
+
+game.audio.music('music/town')                       // crossfades (1 s); the same track again does nothing
+game.audio.music('music/forest', { fadeMs: 400, volume: 0.8 })
+game.audio.stopMusic(800)
+game.audio.currentMusic()                            // 'music/forest'
+
+game.audio.voice('voice/en/anna/hello/anna_0001')  // cuts off the previous voice line
+game.audio.stopVoice()
+
+const engine = await game.audio.play('sfx/engine', { loop: true, bus: 'sfx', fadeInMs: 300 })
+engine.stop(500)                                     // a handle you stop yourself
+
+await game.audio.preload(['music/forest', 'sfx/hit'])</code></pre>
+<h3 id="where">Where sound comes from automatically</h3>
+<table>
+  <tr><th>Source</th><th></th></tr>
+  <tr><td>Map <code>music</code></td><td>Plays on entering the map. <code>null</code> = silence; left out = keep the current track.</td></tr>
+  <tr><td>Map <code>ambient</code> / weather</td><td>See <a href="#ambient">below</a></td></tr>
+  <tr><td>Sound zones</td><td>See <a href="#zones">below</a></td></tr>
+  <tr><td>Line style <code>voice</code></td><td><code>say('anna', 'Hello!', { voice: 12 })</code> (the line's voice number): see <a href="../story/events/scripts.html#voices">Voices</a></td></tr>
+  <tr><td>Character <code>blip</code></td><td>A short typing sound every two letters, for lines without a voice</td></tr>
+  <tr><td>UI sounds</td><td>Focus moves, clicks, tabs, switches, windows opening and closing: set in <code>content/look/sounds.ts</code>, see <a href="../interface/look.html#look-sounds">UI sounds</a>. A button that plays its own sound needs <code>data-sound="none"</code>.</td></tr>
+  <tr><td><code>content/battle.ts</code> <code>music</code></td><td>During battles; the map's music returns afterwards</td></tr>
+  <tr><td>A troop's <code>music</code>, or <code>game.battles.start({ music })</code></td><td>For that fight only</td></tr>
+</table>
+
+<h3 id="loops">Music with an intro</h3>
+<pre><code>// src/content/music.ts
+export default defineMusic({
+  fadeMs: 1000,                                   // crossfade when the music or ambient sound changes
+  loops: {
+    &#39;music/boss&#39;: { start: 12.48, end: 96.0 },    // plays from 0 once, then repeats 12.48 → 96.0 (seconds)
+    &#39;music/town&#39;: { volume: 0.8 },                // evens out a track that was mixed louder
+  },
+})</code></pre>
+<p>Leave a track out to repeat the whole file. Without <code>end</code> it repeats from <code>start</code> to the end of the file. Find the times in an audio editor; the loop is sample-accurate.</p>
+
+<h2 id="ambient">Ambient sound</h2>
+<p>A looping background sound under the music (rain, wind, a crackling fire). It crossfades like music and uses the sound effects volume.</p>
+<pre><code>game.audio.ambient('ambient/wind'); game.audio.ambient(null)
+
+defineMap({ ambient: 'ambient/cave' })     // this map's loop; null = none
+
+// src/content/ambient.ts — used when a map doesn't set its own `ambient`
+export default defineAmbient({ weather: { rain: 'ambient/rain', snow: null } })</code></pre>
+
+<h2 id="zones">Sound zones</h2>
+<p>An area with its own music and/or ambient sound. While the player stands in it, it wins over the map; leaving goes back.</p>
+<ul>
+  <li><b>In Tiled</b> (preferred): draw a rectangle, class <code>zone</code>, string properties <code>music</code> and/or <code>ambient</code>. An empty value means silence.</li>
+  <li><b>In code</b>: any object with an area and <code>music</code> / <code>ambient</code>:
+<pre><code>{ at: { x: 22, y: 12 }, size: { w: 5, h: 5 }, music: null, ambient: 'ambient/fire' }</code></pre></li>
+</ul>
+<p>Example: <code>campfire_zone</code> in <code>town.tmx</code>: the town music fades out near the fire and the fire crackles.</p>
+
+<h2 id="more">Voices, ducking, music room</h2>
+<pre><code>game.audio.voice('voice/en/anna/hello/anna_0001', { volume: 0.8 })
+game.audio.voices([{ id: 'voice/en/ev/jack_0003', who: 'jack' }, { id: 'voice/en/ev/anna_0007', who: 'anna' }]) // together
+game.audio.voicePlaying()                       // true until every clip has ended
+game.audio.voiceSpan()                          // { startedAt, endsAt } (performance.now() ms; the longest clip), or null
+const stop = game.audio.onVoiceSpan(() =&gt; …)    // it changed (the voice bar uses it)
+game.audio.voiceLevel('anna')                   // how loud Anna's clip is now, 0..1
+const off = game.audio.onVoice((playing) =&gt; …)  // starts / ends
+const release = game.audio.duck(0.3, 400)       // hold the music at 30% … release()
+game.audio.has('sfx/door')                      // does the file exist?</code></pre>
+<ul>
+  <li><b>Ducking:</b> while a voice plays the music drops to <code>voice.duckMusic</code> (0.4) of its volume; a <a href="../story/events/stage.html#video">movie</a> fades it out. Numbers in <code>src/content/scenes.ts</code>.</li>
+  <li><b>Music room</b> (Extras → Music): list your tracks in <code>scenes.ts</code>:
+<pre><code>musicRoom: {
+  tracks: [{ id: 'music/town', title: 'Town', artist: 'You' }],
+  unlock: 'heard',      // a track appears once it has played; 'always' = all from the start
+},</code></pre>
+  A track unlocks when it <b>starts playing</b> anywhere in the game (title, map, battle or event music), even if the player leaves at once. Map music counts too: a map you only pass through (like an intro map) still unlocks its track. Picking a track in the music room plays it without unlocking it (so "Show all" stays temporary); the music from before returns when the tab closes. <code>game.extras.music()</code> lists them; <code>game.audio.music(id, { heard: false })</code> plays a track without unlocking it.</li>
+  <li id="music-languages"><b>Music per voice language:</b> <code>audio/music/ja/town.ogg</code> and <code>audio/music/en/town.ogg</code> are both <code>'music/town'</code>. It plays in the <a href="../story/events/scripts.html#voice-languages">voice language</a> the player picked (Settings → Audio), else the next language of <code>voice.languages</code> that has it (<code>en/</code> may be missing while <code>ja/</code> is there), else a plain <code>music/town.ogg</code>. Tracks without language folders work as before. The language is picked when the track starts.</li>
+  <li><b>Sounds per language:</b> <code>sfx/shout.pl.ogg</code> next to <code>shout.ogg</code> plays instead while Polish text is chosen. Works for any sound but voices and music in language folders (they follow the <a href="../story/events/scripts.html#voice-languages">voice language</a>); the language is a folder in <code>src/content/lang</code> (see <a href="../interface/translations.html#assets">Translations</a>).</li>
+</ul>
+
+<h2 id="system-voice">System voice</h2>
+<p>Short clips a character says for the menus, as in VN games: the title call, "Saved!", "Goodbye". The player picks who speaks in <b>Settings → Voices → System voice</b> (a character, Random or Off). Random picks, each time, one of the characters who have that clip.</p>
+<pre><code>src/content/audio/system_voice/anna/title_call.ogg
+src/content/audio/system_voice/anna/saved.ogg
+src/content/audio/system_voice/anna/quit.ogg</code></pre>
+<pre><code>&lt;Button data-voice="shop_open"&gt;Shop&lt;/Button&gt;   // any button or row: the clip plays with the click sound
+game.systemVoice.play('saved')                    // from code (typed: the file names)
+game.systemVoice.playAfterReplay('loaded')         // after a loaded mid-scene save has caught up
+await game.systemVoice.finish()                     // wait for the clip playing now (quitting does)</code></pre>
+<table>
+  <tr><th>Cue</th><th>Said when</th></tr>
+  <tr><td><code>title_call</code></td><td>The title screen appears (in a browser: at the first press, since sound may not play before)</td></tr>
+  <tr><td><code>new</code>, <code>continue</code>, <code>load</code>, <code>extras</code>, <code>settings</code>, <code>quit</code>…</td><td>A title menu entry is picked: the entry's key in <code>src/content/start.ts</code></td></tr>
+  <tr><td><code>quick_saved</code>, <code>quick_loaded</code></td><td>Quick save / quick load</td></tr>
+  <tr><td><code>saved</code>, <code>loaded</code></td><td>The Saves window (<code>src/content/windows/saves</code>) after a save / load</td></tr>
+  <tr><td><code>picked</code></td><td>The player picks this character as the system voice</td></tr>
+  <tr><td><code>quit</code></td><td>The pause menu's Quit (<code>data-voice="quit"</code>); the app waits for it before it closes (at most <code>voice.system.quitWaitMs</code>, 2500)</td></tr>
+</table>
+<ul>
+  <li>A cue the character has no clip for plays nothing: no error, no warning. Name files in lowercase with <code>_</code>.</li>
+  <li>Volume: the Voice slider × that character's own volume and mute in Settings → Voices (no slider of its own). It never cuts off a line's voice, moves no mouth and does not lower the music.</li>
+  <li>Nothing plays while a scene replays (a loaded save, Back).</li>
+  <li>New players' pick: <code>voice.system.default</code> in <code>src/content/scenes.ts</code> ('random' when left out; also a character id or 'off').</li>
+</ul>
+
+<h2 id="memory">Memory</h2>
+<p>A loaded sound takes about 21 MB per minute of stereo music, whatever the file size. Sounds nothing is playing are dropped, least recently used first, once they pass the budget; they load again when needed.</p>
+<pre><code>// src/content/config/media.ts
+audio: { memoryMB: { desktop: 256, mobile: 64, browser: 128 } },</code></pre>
+<p>A sound that is playing is never dropped. The dev panel shows the megabytes in use (<code>game.audio.memoryMB()</code>).</p>
+
+<h2 id="volumes">Volumes and browser rules</h2>
+<ul>
+  <li>Four sliders in Settings: master, music, sound effects (also ambient), voice. They apply live and are saved per device.</li>
+  <li>Under them: <b>Voices play to the end</b>, <b>Lower music under voices</b> and <b>Voice language</b> (see <a href="../story/events/scripts.html#voices">Voices</a>), and each voiced character's volume and mute button are in the <b>Voices</b> tab (see <a href="../story/events/scripts.html#voices">Voices</a>).</li>
+  <li>Browsers only allow sound after the player has pressed something. The title screen's "press any key" does that; before it, nothing plays.</li>
+  <li>Sound pauses when the browser tab is hidden.</li>
+  <li>Without audio support everything simply stays silent (no errors).</li>
+</ul>
+</main>
+</div>
+</body>
+</html>

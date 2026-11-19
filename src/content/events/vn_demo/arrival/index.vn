@@ -1,0 +1,12 @@
+# Visual novel demo (src/content/routes/common): the first box of the common route.
+# No choices in here: the route asks them (choice() in src/content/routes/common/index.ts).
+title Arrival
+
+# A background with variants from src/content/backgrounds (town/bus_stop: an .aseprite and its
+# index.ts, like a layered CG): its variant "day".
+bg town/bus_stop day
+"Bus driver": Last stop. Everybody out.
+> The bus leaves you at the edge of a small town.
+hero(thought): So this is it.
+show anna at right
+anna: Oh! Someone new. Hello!

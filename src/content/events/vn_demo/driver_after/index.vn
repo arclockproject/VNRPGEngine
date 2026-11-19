@@ -1,0 +1,8 @@
+# Visual novel demo: the driver's after story (src/content/routes/driver_after).
+title The last shift
+
+bg bus_inside
+show driver at right
+driver:happy: Last shift. Last stop. Last passenger: you.
+driver:wave: Take care out there.
+hide driver

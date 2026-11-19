@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The game's look · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>The game's look</h1>
+<p class="lead">Colours, text, frames, buttons, named parts and UI sounds: how every screen looks, all in <code>src/content/look/</code>.</p>
+<p>Everything about how the UI looks, sounds and behaves lives in one folder, <code>src/content/look/</code>. It styles every MUI part through the theme, so window code never needs to change, and you never edit <code>src/core/</code> for it. Build your UI from MUI parts (<code>Box</code>, <code>Typography</code>, <code>Button</code>, <code>Paper</code>...) and they all follow it.</p>
+<table>
+  <tr><th>File</th><th>What you edit there</th></tr>
+  <tr><td><code>colors.ts</code></td><td>The palette: text, accent, good / warn / danger...</td></tr>
+  <tr><td><code>text.ts</code></td><td>Font and text sizes, per Typography variant</td></tr>
+  <tr><td><code>frames.ts</code></td><td>The frame pictures the other files share</td></tr>
+  <tr><td><code>buttons.ts</code></td><td>Every Button, by colour and by variant</td></tr>
+  <tr><td><code>parts.ts</code></td><td>Named looks: engine parts (choices, touch buttons...) and your own</td></tr>
+  <tr><td><code>sounds.ts</code></td><td>UI sounds: move, click, tab, window open / close</td></tr>
+  <tr><td><code>mui.ts</code></td><td>Default props (behaviour) and raw MUI theme options, merged last</td></tr>
+  <tr><td><code>map.ts</code></td><td>Text and speech bubbles on the map: name labels, the "press A" prompt, <code>bark()</code> bubbles (font, size, colours, outline, padding, fade)</td></tr>
+  <tr><td><code>glyphs.ts</code></td><td>How keys and controller buttons are named in prompts and on the controls screen, per controller kind, with colours for face buttons</td></tr>
+  <tr><td><code>index.ts</code></td><td>Panels, tabs, dropdowns, bars, sliders, switches, scrollbars, window gap</td></tr>
+</table>
+<p>To see every part in every state at once, open the dev panel (<code>`</code> key) → <b>Look</b> → <b>Open look gallery</b>. It updates as you save.</p>
+<h2 id="look-colors">Colours</h2>
+<p><code>colors.ts</code> becomes the MUI palette. Changing one line recolours every part that uses it, plus every <code>color="primary"</code> or <code>sx={{ color: 'text.secondary' }}</code> in your windows.</p>
+<pre><code>// src/content/look/colors.ts
+export const gold = '#f2d48a'   // your own names, to import in the other look files
+
+export default {
+  text: '#f0e6d2',        // 'text.primary'
+  muted: '#b9ae9a',       // 'text.secondary': hints, captions
+  disabled: '#7d766a',    // 'text.disabled'
+  accent: gold,           // 'primary': primary buttons, switches that are on, sliders, spinners
+  second: '#90caf9',      // 'secondary'
+  good: '#81c784', warn: '#ffb74d', danger: '#ef5350', info: '#64b5f6',
+  divider: 'rgba(240, 230, 210, 0.16)',
+  background: '#0d1117',  // 'background.default'
+  surface: '#1b2433',     // 'background.paper': panels without a frame
+} satisfies LookColors</code></pre>
+<h2 id="fonts">Fonts</h2>
+<p>Put a font file (woff2, woff, ttf or otf) in <code>src/content/fonts/</code> and name it in <code>index.ts</code> there. It ships with the game, so no internet is needed (check the font's licence allows that).</p>
+<pre><code>// src/content/fonts/index.ts
+import pixel from './pixel.woff2'
+import emoji from './NotoColorEmoji.ttf'
+
+export default defineFonts({
+  pixel: { name: 'Pixel', file: pixel },                    // a choice in Settings → Text → Font
+  emoji: { name: 'Emoji', file: emoji, use: 'fallback' },   // fills in letters the others lack
+  special: { name: 'Special', file: special, use: 'internal' }, // only where you name it
+})</code></pre>
+<ul>
+  <li>The id (<code>pixel</code>) is the font's CSS family name: use it anywhere a font is set, e.g. <code>font: "pixel, sans-serif"</code> in <code>look/text.ts</code>, <code>look/map.ts</code> or a line style.</li>
+  <li><b>choice</b> (the default): listed in Settings → Text → Font with its <code>name</code>, after the choices in <code>scenes.ts</code> <code>text.fonts</code>.</li>
+  <li><b>fallback</b>: never picked; it comes after every font, so a letter the other fonts lack still shows. An emoji font here makes symbols like 💾 show on every device, also in toasts and on the map.</li>
+  <li><b>internal</b>: loaded, but never a choice and never added anywhere: only where you name it, e.g. <code>&lt;p style={{ fontFamily: 'special' }}&gt;Rocket&lt;/p&gt;</code>.</li>
+  <li>No Font row in Settings at all: <code>playerPicksFont: false</code> in <code>scenes.ts</code> <code>text</code>. Everyone then gets the first font of <code>text.fonts</code>, even a player who picked another one before.</li>
+  <li>A bold or italic file of the same font: give it <code>family: 'pixel'</code> and <code>weight: 'bold'</code> (or <code>style: 'italic'</code>). Only the first file of a family is listed as a choice.</li>
+</ul>
+<p>The font in use, for things that should change with it:</p>
+<pre><code>import { useFont } from '@/core/managers/fonts'
+const icon = useFont() === 'pixel' ? pixelIcon : icon     // React: updates when the player picks another
+
+game.fonts.current()   // the same outside React: 'game', 'sans', 'pixel'…
+game.fonts.choices()   // every choice: { id, name, family }
+game.fonts.playerPicks()   // false when scenes.ts hides the Font row</code></pre>
+
+<p>In your own windows use the palette names, not colour codes, so they follow the look: <code>sx={{ color: 'warning.main', borderColor: 'divider' }}</code>. A minigame that needs its own colours keeps them in its own file or inline.</p>
+<h2 id="look-text">Text</h2>
+<pre><code>// src/content/look/text.ts
+export default {
+  font: "'MyFont', sans-serif",
+  size: 15,                                  // base size in px (default 14)
+  h6: { fontWeight: 700 },                   // window and section titles
+  body2: { fontSize: 14 },                   // most text in windows
+  caption: { opacity: 0.8 },
+  button: { textTransform: 'none' },         // the text on every Button
+} satisfies LookText</code></pre>
+<p>The names are the MUI Typography variants (<code>&lt;Typography variant="body2"&gt;</code>). Each takes plain CSS.</p>
+<h2 id="look-boxes">Boxes and frames</h2>
+<p>Each part is a box: a <code>background</code> (any CSS background), a text <code>color</code> and, for art, a <b>9-slice frame</b> <code>image</code>. The frame's corners keep their size, its sides stretch or tile, and its middle fills the inside, so one picture fits a button or a full window.</p>
+<pre><code>// src/content/look/index.ts
+export default defineLook({
+  colors, text, button, parts, sounds, mui,
+  panel: { image: panelImage, slice: 8, scale: 2, pixelated: true },   // every Paper
+  tabs: { tab: { selected: { image: buttonFocus, slice: 4 } }, indicator: 'none' },
+})</code></pre>
+<table>
+  <tr><th>Frame option</th><th>Meaning</th></tr>
+  <tr><td><code>slice</code></td><td>Pixels of the image that are frame: one number, or <code>[top, right, bottom, left]</code>. Default 16.</td></tr>
+  <tr><td><code>scale</code></td><td>Edge size on screen = <code>slice × scale</code> px. Pixel art cut at 4px with <code>scale: 3</code> draws 12px edges; high-res art cut at 96px with <code>scale: 0.25</code> draws 24px edges. Default 1.</td></tr>
+  <tr><td><code>sides</code></td><td><code>'stretch'</code> (default), <code>'round'</code> (tile whole copies: use it for patterned edges), <code>'repeat'</code>, <code>'space'</code>.</td></tr>
+  <tr><td><code>pixelated</code></td><td>Sharp pixels when scaled (pixel art). Leave it off for high-res art, which then scales smoothly.</td></tr>
+</table>
+<p><code>panel</code> is the base of every MUI Paper (windows, chat box, toasts, battle panels, dropdown lists); <code>window</code> and <code>dialog</code> override it for windows and the chat box only. The look sets styles only: to add something to a window or the chat box (a logo, a footer) or move their parts, use <a href="screens.html#window-slot"><code>src/content/ui/Window.tsx</code></a> and <a href="../story/events/stage.html#chat-box-layout"><code>src/content/ui/TextDialog.tsx</code></a>.</p>
+<p>Every box also takes <code>css</code>: plain CSS properties, applied <b>last</b>, so they win over everything else the box sets (a frame squares the corners; <code>css</code> can round them again). A state's <code>css</code> is added to the normal one.</p>
+<p>Parts that react also take <code>focus</code>, <code>pressed</code>, <code>disabled</code> and <code>selected</code> boxes, merged over the normal one. A state without its own frame <code>image</code> keeps the frame with a small effect, so it always shows: focus brighter, pressed darker, disabled grey. A selected part that is focused keeps its selected picture. Parts with their own focus look drop MUI's pulsing grey focus blob (the click ripple stays). Focus is what gamepad and keyboard players see, so give it a clear picture; it also shows on mouse hover.</p>
+<h2 id="look-buttons">Buttons</h2>
+<p>A button has a <b>colour</b> (<code>color="error"</code>) and a <b>variant</b> (<code>variant="contained"</code>, <code>"outlined"</code> or <code>"text"</code>). Its look is built in this order, each on top of the one before: <code>all</code> → <code>all.&lt;variant&gt;</code> → <code>&lt;colour&gt;</code> → <code>&lt;colour&gt;.&lt;variant&gt;</code>. What you write straight in a look goes to all three variants.</p>
+<pre><code>// src/content/look/buttons.ts
+const plain: LookButton = { image: button, slice: 4, color: '#f0e6d2' }
+
+export default {
+  all: {
+    focus: { image: buttonFocus, slice: 4, color: 'gold' },
+    pressed: { css: { transform: 'translateY(1px)' } },
+  },
+  primary: plain,                                   // one style for all three variants
+  secondary: {
+    ...plain,                                       // shared by the three...
+    contained: { color: 'white' },                  // ...then each variant can differ
+    text: { image: undefined, background: 'transparent' },
+  },
+  error: { image: buttonError, slice: 4 },
+} satisfies LookButtons</code></pre>
+<h2 id="look-parts">Named parts</h2>
+<p><code>parts.ts</code> holds looks with a name. The engine draws some itself (keep those names, change the looks); add your own next to them and the name works, and autocompletes, everywhere.</p>
+<pre><code>// src/content/look/parts.ts
+export default {
+  choice: { image: button, slice: 4 },                       // engine: event answer buttons
+  cover: { background: 'rgba(0, 0, 0, 0.5)' },                // engine: behind a modal window
+  // ...
+  fancy: { image: gold, slice: 4, focus: { color: 'white' } }, // yours
+} satisfies LookParts</code></pre>
+<pre><code>&lt;Button variant="fancy"&gt;Buy&lt;/Button&gt;      // a Button: starts from buttons.ts `all`, no MUI variant styling
+&lt;Paper variant="fancy"&gt;...&lt;/Paper&gt;
+&lt;Box sx={part('fancy')} /&gt;                // anything else (import { part } from '@/core/ui/part')
+&lt;Box sx={part('fancy', 'selected')} /&gt;    // one state drawn flat, when you pick the state yourself</code></pre>
+<table>
+  <tr><th>Engine part</th><th>Where</th></tr>
+  <tr><td><code>choice</code></td><td>Event answer buttons</td></tr>
+  <tr><td><code>titleButton</code></td><td>Title screen menu buttons</td></tr>
+  <tr><td><code>cover</code>, <code>logCover</code></td><td>The dark layer behind a modal window / behind the event log</td></tr>
+  <tr><td><code>sceneToolbar</code></td><td>The strip of the scene toolbar's buttons (Settings, Save, Back, Auto, Skip… <a href="../story/events/stage.html#toolbar">all of them</a>), wherever <code>toolbar.place</code> puts it</td></tr>
+  <tr><td><code>sideImage</code></td><td>The frame around the speaker's face next to the text (<a href="../story/events/stage.html#side-image">side image</a>): no background or border = only the face</td></tr>
+  <tr><td><code>inset</code></td><td>The frame of the <a href="../story/events/stage.html#insets">picture in the middle</a> (<code>inset()</code>). Optional: without it the picture only gets a shadow</td></tr>
+  <tr><td><code>nameTag</code></td><td>The speaker's name on the chat box (a character's <code>color</code> replaces its background; a character's <code>chatBox</code> can lay its own looks over the box, the name and the text: <a href="../story/events/stage.html#chat-box-look">A chat box per character</a>)</td></tr>
+  <tr><td><code>chapterCard</code>, <code>chapterCardLabel</code>, <code>chapterCardTitle</code></td><td>The full-screen chapter card: its cover, the "Chapter 1" line, and the title (<a href="../story/events/flow.html#chapters">Chapters</a>)</td></tr>
+  <tr><td><code>lineText</code>, <code>narrationText</code></td><td>The chat box's text: a line someone says, and narration. Use solid colours (no <code>rgba</code>): the player's "Text box opacity" fades the box behind the text, and see-through text would let the scene show through the letters</td></tr>
+  <tr><td><code>lineTextRead</code>, <code>narrationTextRead</code> (optional)</td><td>Added on top of the two above for a line the player has <b>read before</b> (in any playthrough, the same lines Skip passes): another colour, a softer weight. Leave them out and read lines look like new ones. A custom <code>TextDialog.tsx</code> also gets <code>read</code>.</td></tr>
+  <tr><td><code>touchButton</code>, <code>joystick</code>, <code>joystickKnob</code></td><td>On-screen touch controls and the ☰ menu button</td></tr>
+  <tr><td><code>viewer</code>, <code>viewerDot</code></td><td>Close button, caption and variant dots over a full-screen picture</td></tr>
+</table>
+<h2 id="look-sounds">UI sounds</h2>
+<p><code>sounds.ts</code> names a sound from <code>src/content/audio/</code> for each thing the UI does. The engine plays them by itself for every control, on all devices; leave a line out for silence. They use the SFX volume.</p>
+<pre><code>// src/content/look/sounds.ts
+export default {
+  move: { id: 'sfx/blip', volume: 0.4 },   // focus moved (keyboard / gamepad)
+  hover: 'sfx/blip',                       // mouse moved onto a control
+  click: 'sfx/click',                      // button, menu row, dropdown
+  tab: 'sfx/click',                        // a tab was picked
+  toggle: 'sfx/click',                     // switch or checkbox
+  open: 'sfx/confirm',                     // a window opened
+  close: 'sfx/click',                      // a window closed
+  buy: 'sfx/confirm',                      // your own name
+} satisfies LookSounds</code></pre>
+<p>One element can differ with the <code>data-sound</code> attribute. It works on any element, and on a parent it covers everything inside (a whole list, a whole window body).</p>
+<pre><code>&lt;Button data-sound="buy"&gt;Buy&lt;/Button&gt;     // plays `buy` from sounds.ts instead of `click`
+&lt;Button data-sound="none"&gt;...&lt;/Button&gt;    // silent
+&lt;Stack data-sound="none"&gt;...&lt;/Stack&gt;      // every control inside is silent</code></pre>
+<table>
+  <tr><th>Value</th><th>Effect</th></tr>
+  <tr><td>not set</td><td>The default for what the control is: <code>click</code>, <code>tab</code> (a tab) or <code>toggle</code> (switch, checkbox, radio); <code>move</code> / <code>hover</code> when it is reached</td></tr>
+  <tr><td><code>"none"</code></td><td>No UI sound at all for it: no click, move or hover</td></tr>
+  <tr><td><code>"name"</code></td><td>Plays that line of <code>sounds.ts</code> when clicked. A name that is not in <code>sounds.ts</code> is silent.</td></tr>
+</table>
+<p><b>Use <code>data-sound="none"</code> whenever a button's <code>onClick</code> plays its own sound</b>, or the player hears two at once. The shop's Buy / Sell and the Save button do this: they play a confirm sound only when the action worked.</p>
+<pre><code>&lt;Button
+  data-sound="none"
+  onClick={() =&gt; {
+    if (game.shops.buy(shop, id) === 'ok') game.audio.sfx('sfx/confirm')
+  }}
+&gt;
+  Buy
+&lt;/Button&gt;</code></pre>
+<ul>
+  <li><b>What counts as a control:</b> buttons, links, inputs, dropdowns and their rows, tabs, sliders, and anything with <code>role="button"</code> or a <code>tabIndex</code>. A plain <code>Box</code> with an <code>onClick</code> is silent: use <code>ButtonBase</code>, or call <code>uiSound()</code> yourself.</li>
+  <li><b>Disabled</b> controls are silent.</li>
+  <li><b><code>move</code></b> plays only when the player moved the focus (arrows, d-pad, stick, Tab). A window focusing its first button, or a mouse click, does not play it.</li>
+  <li><b><code>hover</code></b> is for a real mouse only, never touch.</li>
+  <li>When several happen in the same moment (a click that closes a window) only one is heard: open, close, tab, toggle, click, move, hover, in that order. A <code>data-sound="name"</code> beats them all.</li>
+  <li>From code: <code>uiSound('buy')</code> (<code>import { uiSound } from '@/core/ui/sounds'</code>) plays a line of <code>sounds.ts</code>.</li>
+  <li>Continuing a line of dialogue is not a control, so it has no UI sound (characters have their own <a href="../systems/audio.html#where">blip</a>).</li>
+</ul>
+<h2 id="look-mui">Behaviour and everything else</h2>
+<p><code>mui.ts</code> is a raw <a href="https://mui.com/material-ui/customization/theme-components/">MUI theme</a>, merged last. Use <code>defaultProps</code> for how a part behaves everywhere, and <code>styleOverrides</code> for anything the look has no setting for.</p>
+<pre><code>// src/content/look/mui.ts
+export default {
+  components: {
+    MuiButton: { defaultProps: { variant: 'outlined', size: 'large' } },
+    MuiButtonBase: { defaultProps: { disableRipple: true } },      // no click ripple anywhere
+    MuiTooltip: { styleOverrides: { tooltip: { fontSize: 14 } } },
+  },
+} satisfies ThemeOptions</code></pre>
+<h2 id="look-hires">Pixel art or high-res</h2>
+<p>Both work; only the numbers change. <code>slice</code> is always in the image's own pixels, and the frame's thickness on screen is <code>slice × scale</code> CSS px.</p>
+<ul>
+  <li><b>Pixel art:</b> small image, <code>scale</code> 2 or more, <code>pixelated: true</code>.</li>
+  <li><b>High-res:</b> draw the frame 2–4× bigger than it should look and set <code>scale</code> to 1/2–1/4 (e.g. <code>slice: 96, scale: 0.25</code>). Phones and many laptops have 2–3 screen pixels per CSS px, so the extra detail is used there instead of being blurred up. Leave out <code>pixelated</code>.</li>
+  <li>Keep frame images in <code>src/content/assets/ui/</code>. The <a href="../world/art.html#big-games">lite build</a> only shrinks gallery pictures and <code>backgrounds/</code> folders; a shrunk frame would no longer match its <code>slice</code>.</li>
+</ul>
+<h2 id="look-list">Parts in index.ts</h2>
+<table>
+  <tr><th>Part</th><th>Styles</th></tr>
+  <tr><td><code>panel</code></td><td>Every MUI Paper: windows, the chat box, toasts, battle panels, dropdown lists, alerts</td></tr>
+  <tr><td><code>window</code>, <code>dialog</code></td><td>Windows / the event chat box only (over <code>panel</code>)</td></tr>
+  <tr><td><code>iconButton</code></td><td>Round icon buttons, e.g. a window's ✕</td></tr>
+  <tr><td><code>tabs</code></td><td><code>bar</code> (strip), <code>tab</code> (<code>selected</code> = open tab), <code>indicator</code> (CSS background or <code>'none'</code>)</td></tr>
+  <tr><td><code>slider</code></td><td><code>height</code>, <code>rail</code>, <code>track</code> (filled part; <code>{ background: 'transparent', css: { border: 'none' } }</code> hides it), <code>thumb</code> + <code>thumbSize</code></td></tr>
+  <tr><td><code>progress</code></td><td><code>height</code>, <code>rail</code>, <code>bar</code> (HP/XP bars, loading)</td></tr>
+  <tr><td><code>switch</code></td><td><code>track</code>, <code>thumb</code>, and <code>on: { track, thumb }</code> for the switched-on look</td></tr>
+  <tr><td><code>input</code>, <code>menu</code>, <code>menuItem</code></td><td>A closed dropdown, the list it opens, one row of it</td></tr>
+  <tr><td><code>chip</code>, <code>alert</code>, <code>avatar</code></td><td>Chips (the money counter, quest tags; states show on clickable ones), alert boxes, avatars</td></tr>
+</table>
+<ul>
+  <li>The frame takes space inside the box: a 12px edge pushes the content in 12px. Thin parts (bars, sliders) need a <code>height</code> that leaves room for both edges.</li>
+  <li>A <code>sx</code> on one element still wins over the look, so a one-off restyle stays possible. Don't set a fixed small <code>height</code> on a framed bar there.</li>
+  <li>Images go in <code>src/content/assets/ui/</code> and are imported, so they are bundled and checked. The ones there are placeholders.</li>
+  <li>Remove a part to get the plain MUI look back.</li>
+</ul>
+<p><code>scrollbar</code> colours the browser's own scrollbars everywhere (<code>width</code>: <code>'auto'</code>, <code>'thin'</code> or <code>'none'</code>). Leave it out and they are still dark, never the white default.</p>
+<p><code>windowGap</code> is the empty space (px) kept around windows so the game shows at their edges. It follows the game screen's shorter side: <code>min</code> on screens up to <code>smallScreen</code> px, <code>max</code> from <code>largeScreen</code> px, in between it grows smoothly. Phones get <code>min</code> (32 by default, half of <code>max</code>); set it to 0 to let them use every pixel.</p>
+</main>
+</div>
+</body>
+</html>

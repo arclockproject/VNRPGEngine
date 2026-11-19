@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">
+<!-- Demo of a content variant: the bus as the "cn" build (region=cn) shows it. src/content/config/variants.ts -->
+  <title>Inside the night bus</title>
+  <rect width="1280" height="720" fill="#b03030"/>
+  <rect x="80" y="90" width="320" height="210" rx="18" fill="#b03030"/>
+  <rect x="480" y="90" width="320" height="210" rx="18" fill="#b03030"/>
+  <rect x="880" y="90" width="320" height="210" rx="18" fill="#b03030"/>
+  <circle cx="300" cy="150" r="3" fill="#b03030"/>
+  <circle cx="620" cy="220" r="2" fill="#b03030"/>
+  <circle cx="1010" cy="140" r="3" fill="#b03030"/>
+  <rect y="330" width="1280" height="16" fill="#b03030"/>
+  <rect x="60" y="430" width="300" height="200" rx="20" fill="#b03030"/>
+  <rect x="920" y="430" width="300" height="200" rx="20" fill="#b03030"/>
+  <rect y="640" width="1280" height="80" fill="#b03030"/>
+</svg>

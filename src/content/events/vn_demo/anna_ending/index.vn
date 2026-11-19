@@ -1,0 +1,8 @@
+# Visual novel demo: Anna's route ends here (back to the title).
+title Anna's ending
+
+bg #2a2a1d
+show anna
+anna: Same time tomorrow?
+> And the day after that, too.
+hide

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flags, items &amp; money · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Flags, items &amp; money</h1>
+
+<p class="lead">Flags, items, money, quests, party, battles and unlockables. All of them are saved automatically, typed by your content, and editable in the <a href="../systems/tools.html#dev-panel">dev panel</a>.</p>
+
+<table>
+  <tr><th>System</th><th>Saved with</th></tr>
+  <tr><td>Flags, items, money, shop stock, quests, relationships, party, journal</td><td>The save slot (each playthrough has its own)</td></tr>
+  <tr><td>Achievements, gallery and scene unlocks, read lines</td><td>The device, across all saves and new games</td></tr>
+</table>
+
+<h2 id="flags">Flags</h2>
+<p>Story facts: did we meet Anna, how often did we talk.</p>
+<pre><code>// src/content/flags.ts — every flag and its start value
+export default defineFlags({
+  met_anna: false,
+  times_talked_to_anna: 0,
+  favourite_colour: 'blue',
+})
+
+game.flags.get('met_anna')                  // typed: boolean
+game.flags.set('met_anna', true)
+game.flags.toggle('met_anna')
+game.flags.add('times_talked_to_anna')      // +1 (or add(id, 5))
+game.flags.reset('met_anna')                // back to the start value
+const met = useFlag('met_anna')             // React, from '@/core/managers/flags'</code></pre>
+<p>A misspelled flag is a type error. New flags start at their value in old saves too, no migration needed. A saved value of the wrong type falls back to the start value.</p>
+
+<h2 id="items">Items</h2>
+<pre><code>// src/content/items/apple/index.ts
+import { defineItem } from '@/core/define'
+import icon from './icon.svg'
+
+export default defineItem({
+  name: 'Apple',
+  description: 'Crunchy. Restores 10 health.',
+  icon,
+  price: 5,               // shops use it
+  max: 99,                // most you can carry (default 99)
+  use: ({ game }) =&gt; game.state.update((d) =&gt; { d.stats.health += 10 }),   // one is used up
+  // keepOnUse: true,     // letters, tools
+  // useLabel: 'Read',    // the inventory button's text (or a function, see the lantern)
+  // onObtain / onLose: ({ game, id, count, total }) =&gt; { … }   // whenever some are gained / leave the inventory
+  // light: { radius: 3.5 },   // the player glows while it is carried and switched on
+  // equip: { slot: 'weapon', stats: { attack: 3 } },     // wearable (Party)
+  // battle: { effects: [{ type: 'heal', amount: 10 }] },  // usable in battle
+})</code></pre>
+<pre><code>game.items.add('apple', 2, { notify: true })   // returns how many fit
+game.items.remove('apple')                      // false (and nothing taken) if there aren't enough
+game.items.count('apple'); game.items.has('apple', 3)
+await game.items.use('apple')
+game.items.isOn('lantern'); game.items.setOn('lantern', true); game.items.toggle('lantern')   // saved
+game.items.info('apple').name; game.items.list()
+const list = useInventory()                     // React: [{ id, count, item }]
+const apples = useItemCount('apple')</code></pre>
+<p>The inventory window is <code>windows/inventory</code>: E key, X on a pad, the Bag touch button, or the <a href="../interface/input.html#pause-menu">pause menu</a>.</p>
+<h3 id="item-hooks">Items that do something while carried</h3>
+<pre><code>// src/content/items/lantern/index.ts — everything about the lantern is here
+export default defineItem({
+  name: 'Lantern', icon, price: 20, max: 1,
+  light: { radius: 3.5, color: '#ffe0a0' },                 // shown while carried and switched on
+  onObtain: ({ game, id }) =&gt; game.items.setOn(id, true),   // lit as soon as you get it
+  onLose: ({ game, id }) =&gt; game.items.setOn(id, false),    // put out when sold / taken away
+  keepOnUse: true,
+  useLabel: ({ game, id }) =&gt; (game.items.isOn(id) ? game.t('Put out') : game.t('Light')),
+  use: ({ game, id }) =&gt; { game.items.toggle(id) },         // the inventory button switches it
+})</code></pre>
+<ul>
+  <li><code>onObtain</code> / <code>onLose</code> run whenever some are gained or leave the inventory (found, bought, sold, used up, equipped), with <code>count</code> (how many) and <code>total</code> (carried now). Use them for anything: a flag, a quest step, a stat.</li>
+  <li>On / off is saved per item. Items start off.</li>
+  <li>Item files are loaded at start: use the <code>game</code> they are given, don't import it.</li>
+</ul>
+
+<h2 id="money">Money &amp; shops</h2>
+<pre><code>// src/content/config/money.ts
+export default defineMoney({ format: tx('{amount} coins'), start: 50, max: 99999 })
+
+game.money.get(); game.money.add(10, { notify: true }); game.money.spend(5)   // false if too little
+game.money.canAfford(30); game.money.format(12)     // "12 coins" (translated)
+const coins = useMoney()                            // React</code></pre>
+<pre><code>// src/content/shops/anna/index.ts
+export default defineShop({
+  name: "Anna's stall",
+  items: { apple: {}, bread: { stock: 5 }, lantern: { price: 40, stock: 1 } },
+  priceRate: 1,           // multiplies items' own `price` when no price is listed
+  buys: ['apple'],        // what she buys from the player: true = anything with a price, false = nothing
+  sellRate: 0.5,          // share of the item price paid to the player
+  restock: 'daily',       // stock refills each in-game day; or 'never'
+})
+
+game.shops.open('anna')                    // the shop window, Buy / Sell tabs
+game.shops.buy('anna', 'bread')            // 'ok' | 'money' | 'stock' | 'full' | 'refused'
+game.shops.sell('anna', 'apple')           // 'ok' | 'missing' | 'full' | 'refused'
+game.shops.canBuy('anna', 'bread'); game.shops.price('anna', 'bread'); game.shops.stock('anna', 'bread')
+game.shops.list('anna'); game.shops.sellable('anna')</code></pre>
+<p>Money and the stock sold today are saved. Old saves without money get <code>start</code>.</p>
+
+<h2 id="crafting">Crafting</h2>
+<pre><code>// src/content/recipes.ts — all recipes in one file
+export default defineRecipes({
+  inMenu: true,                   // "Crafting" in the pause menu once a recipe without a station is known
+  // sound: 'sfx/craft',
+  recipes: {
+    apple_bread: { makes: 'bread', count: 2, needs: { apple: 2, bread: 1 } },
+    lucky_charm: {
+      makes: 'lucky_charm', needs: { apple: 3 }, cost: 25,
+      tools: ['wooden_sword'],    // must be in the bag, not used up
+      station: 'campfire',        // only where you open game.crafting.open('campfire')
+      known: false,               // hidden until game.crafting.learn('lucky_charm')
+    },
+  },
+})
+
+game.crafting.open()                    // the window, for recipes without a station
+game.crafting.open('campfire')          // at a station, e.g. from a prop's onInteract
+game.crafting.learn('lucky_charm', { notify: true }); game.crafting.knows('lucky_charm')
+game.crafting.make('apple_bread')       // null = made; else 'unknown' | 'station' | 'items' | 'tools' | 'money' | 'full'
+game.crafting.make('apple_bread', { count: 3, station: 'campfire', notify: false })
+game.crafting.canMake('apple_bread'); game.crafting.list('campfire')
+const recipes = useRecipes('campfire')  // React: names, have / need counts, `problem`</code></pre>
+<p>Nothing is taken unless everything is there, including room in the bag for the result. The window is <code>content/windows/crafting</code>; it always shows what a recipe takes and why it cannot be made, so it works the same with keys, a pad and touch. Learned recipes are saved.</p>
+
+</main>
+</div>
+</body>
+</html>

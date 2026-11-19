@@ -1,0 +1,7 @@
+# Visual novel demo: the bad ending (you took the bus).
+title Alone on the bus
+
+# A plain background: the single file src/content/backgrounds/bus_inside.svg.
+bg bus_inside
+> You climb on board. The town gets smaller behind you.
+> You never find out what Jack wanted to say.

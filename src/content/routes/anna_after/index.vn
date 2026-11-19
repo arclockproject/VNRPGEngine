@@ -1,0 +1,10 @@
+# An after story (visual novel demo): listed on the title screen's "After Stories" once ending anna
+# was reached ("after story [ending anna]"; more [ending x] = all of them). It starts from a fresh
+# game and has its own group of tabs on the flowchart.
+title A year at the pond
+description Anna, one year after you stayed.
+color #7fb3ff
+image ./card.svg
+after story [ending anna]
+event vn_demo/anna_after
+end

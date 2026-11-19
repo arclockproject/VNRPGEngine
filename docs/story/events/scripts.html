@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Events: writing a scene · Engine Guide</title>
+<link rel="stylesheet" href="../../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../../assets/search-index.gen.js" defer></script>
+<script src="../../assets/code.gen.js" defer></script>
+<script src="../../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Events: writing a scene</h1>
+
+<p class="lead">Events are visual-novel scenes: dialogue at the bottom, portraits on stage, choices, effects. They're async scripts, so a scene reads top to bottom. You can also write them as <a href="../vn.html">.vn text files</a>.</p>
+
+<h2 id="basics">A first event</h2>
+<pre><code>// src/content/events/anna/hello/index.ts  → the event 'anna/hello'
+import { defineEvent } from '@/core/define'
+
+export default defineEvent({
+  title: 'Talking to Anna',   // like a map's title: shown on saves made during this event
+  run: async ({ say, narrate, choice, show, hide, game }) =&gt; {
+    show('anna', { at: 'right', pose: 'happy' })
+    await say('anna', 'Hi! What can I do for you?')
+    const pick = await choice({ shop: 'Do you sell anything?', bye: 'I have to go.' })
+    if (pick === 'shop') game.shops.open('anna')
+    else await narrate('She waves.', { italic: true })
+    hide('anna')
+  },
+})</code></pre>
+<p class="muted">Want to see it all running? Read the town sign in the demo and take the tour (<code>src/content/events/town/showcase</code>).</p>
+<p>Start it from anywhere: <code>await game.events.start('anna/hello')</code>. Usually from a map object's <code>onInteract</code>, a prop, an item's <code>use</code>, or another event.</p>
+<ul>
+  <li>The map stays visible behind the scene; NPCs can walk while people talk.</li>
+  <li>Awaiting a line waits for the player. Not awaiting an effect lets it run alongside the next line.</li>
+  <li>When the event ends, the stage is reset (portraits, background, filters, camera). The log is kept.</li>
+</ul>
+
+<h2 id="context">Everything a script gets</h2>
+<table>
+  <tr><th>Command</th><th></th></tr>
+  <tr><td><code>say(who, text, options?)</code></td><td>A line. <code>who</code> is a character id, or <code>'anna:happy'</code> to change pose (shows her if needed).</td></tr>
+  <tr><td><code>narrate(text, options?)</code></td><td>A line without a speaker</td></tr>
+  <tr><td><code>choice(options, settings?)</code></td><td>See <a href="#choices">Choices</a></td></tr>
+  <tr><td><code>show(who, options?)</code> / <code>hide(who?)</code></td><td>Portraits; <code>hide()</code> clears the stage. See <a href="stage.html#portraits">Portraits</a></td></tr>
+  <tr><td><code>bg(id)</code>, <code>background(x)</code>, <code>cg(id)</code>, <code>filter(x)</code></td><td>See <a href="stage.html#backgrounds">Backgrounds</a></td></tr>
+  <tr><td><code>animate</code>, <code>camera</code>, <code>shake</code>, <code>startShake</code> / <code>stopShake</code>, <code>flash</code>, <code>fade</code></td><td>See <a href="stage.html#effects">Effects</a></td></tr>
+  <tr><td><code>rename(who, name)</code> / <code>reveal(who)</code></td><td>Change the name shown for a character, see <a href="../../world/characters.html#names">Names that change</a></td></tr>
+  <tr><td><code>movie(src, options?)</code></td><td>A video over the scene, see <a href="stage.html#video">Video</a></td></tr>
+  <tr><td><code>input(prompt, options?)</code></td><td>The player types a text, see <a href="flow.html#input">Asking for text</a></td></tr>
+  <tr><td><code>wait(ms)</code></td><td>A pause</td></tr>
+  <tr><td><code>event(id, params?)</code></td><td>Runs another event here, in the same scene</td></tr>
+  <tr><td><code>random()</code></td><td>0..1. Use it instead of <code>Math.random()</code> (see <a href="flow.html#mid-scene-saves">saves</a>)</td></tr>
+  <tr><td><code>params</code></td><td>What the event was started with</td></tr>
+  <tr><td><code>game</code></td><td>The whole <a href="../../index.html#game-object">game object</a></td></tr>
+</table>
+<h3 id="line-values">Values in a line</h3>
+<p>Write <code>{name}</code> in the text and give the value in the options. TypeScript asks for every value the text needs, and the editor suggests their names.</p>
+<pre><code>await say('hero', 'Wow, you got me {count} apples!', { count: 5 })
+await narrate('{name} has {gold} gold.', { name: 'Anna', gold: game.money.get(), italic: true })</code></pre>
+<ul>
+  <li>Values and <a href="#line-style">style</a> go in the same object. A value can't be named like a style option (<code>{speed}</code>, <code>{color}</code>…).</li>
+  <li>Translators see the text with its <code>{name}</code> holes, so one translation works for every value (see <a href="../../interface/translations.html">Translations</a>).</li>
+  <li>Markup tags (<code>{b}</code>, <code>{wave}</code>…) are not values.</li>
+</ul>
+<h3 id="line-style">Line style</h3>
+<pre><code>await say('anna', 'WHAT?!', { size: 'large', shake: true })
+await narrate('A long time ago…', { italic: true, speed: 0.5 })</code></pre>
+<table>
+  <tr><th>Style</th><th></th></tr>
+  <tr><td><code>italic</code>, <code>size</code> (<code>'small' | 'normal' | 'large'</code>), <code>color</code>, <code>shake</code></td><td>Looks of the whole line</td></tr>
+  <tr><td><code>speed</code></td><td>Multiplies the player's text speed: <code>2</code> = twice as fast, <code>0.5</code> = slow and dramatic</td></tr>
+  <tr><td><code>autoAdvance</code></td><td>ms after typing, then it continues by itself</td></tr>
+  <tr><td><code>style</code></td><td>A named look from <code>lineStyles</code> in <code>src/content/scenes.ts</code> (<code>{ style: 'thought' }</code>); the other keys win over it</td></tr>
+  <tr><td><code>as</code></td><td>Another name on the plate for this line (<code>as: '???'</code>). For a lasting change: <code>rename</code></td></tr>
+  <tr><td><code>voice</code></td><td>The voice number (<code>voice: 12</code>) or a clip by name, see <a href="#voices">Voices</a>. Left out = no voice</td></tr>
+  <tr><td><code>noAutoPause</code></td><td>Turns off the short automatic pause after <code>. ! ?</code> while typing (on by default)</td></tr>
+</table>
+
+<h2 id="markup">Text markup</h2>
+<pre><code>await say('anna', 'Well{w=0.5}… {b}fine{/b}. {color=#e53935}Red{/color} and {wave}wavy{/wave}!')</code></pre>
+<table>
+  <tr><th>Tag</th><th></th></tr>
+  <tr><td><code>{b}…{/b}</code>, <code>{i}…{/i}</code></td><td>Bold, italic</td></tr>
+  <tr><td><code>{color=#e53935}…{/color}</code></td><td>Colour</td></tr>
+  <tr><td><code>{size=small|large|huge|1.4}…{/size}</code></td><td>Size</td></tr>
+  <tr><td><code>{shake}…{/shake}</code>, <code>{wave}…{/wave}</code></td><td>Animated letters</td></tr>
+  <tr><td><code>{ruby=とうきょう}東京{/ruby}</code></td><td>Small reading text above the letters (furigana)</td></tr>
+  <tr><td><code>{w=0.5}</code></td><td>Pause while typing (seconds, default 0.5)</td></tr>
+  <tr><td>(automatic)</td><td>A short pause after <code>. ! ?</code> (and <code>。！？</code>) when followed by a space or the end; off with <code>noAutoPause: true</code></td></tr>
+  <tr><td><code>{/}</code> · <code>{{</code></td><td>Close the latest tag · a literal "{"</td></tr>
+</table>
+<p class="muted">Translations keep the tags (translate the text between them). The log shows lines without tags.</p>
+<p>Japanese and Chinese text breaks by its own rules (no line starts with <code>。</code> or <code>、</code>): the page's language is set from the language file's <code>locale</code> (see <a href="../../interface/translations.html#language-file">Translations</a>).</p>
+
+<h2 id="voices">Voices</h2>
+<pre><code>await say('anna', 'Hello!', { voice: 12 })                      // voice number 12
+await say('anna', 'Hello again!', { voice: 'anna/hello/anna_0001' }) // a clip of another event
+await say('anna', 'Nice day.')                                  // no number = no voice (her blip plays)
+await say(['jack', 'anna'], 'Bye!', { voice: { jack: 3, anna: 7 } }) // said together, two clips at once</code></pre>
+<p>In a .vn script the number goes in the brackets: <code>anna(12): Hello!</code> (see <a href="../vn.html#line-options">Line options</a>).</p>
+<ul>
+  <li><b>The file</b> of a voice number: <code>src/content/audio/voice/&lt;language&gt;/&lt;event id&gt;/&lt;speaker&gt;_&lt;number&gt;.ogg</code> (any sound format). <code>anna(12)</code> in the event <code>town/arrival</code> plays <code>voice/en/town/arrival/anna_0012.ogg</code>. There is always a language folder, even when the game has one voice language.</li>
+  <li><b>Numbers</b> count per event and per speaker: Anna's 1, 2, 3… and Jack's 1, 2, 3… in the same event are different files. In file names they have leading zeros; how many digits is <code>voice.digits</code> in <code>src/content/scenes.ts</code> (4 = <code>anna_0012</code>). In scripts you may write <code>12</code> or <code>0012</code>. <code>pnpm story --number</code> writes them for you on every line that has none (<a href="../../systems/tools.html#voice-numbers">Tools</a>); the .vn editor suggests the next free one.</li>
+  <li id="together"><b>Several voices on one line.</b> Said together: <code>say(['jack', 'anna'], 'Bye!', { voice: { jack: 3, anna: 7 } })</code>: the name tag reads "Jack &amp; Anna" (<code>text.groupName</code> in <code>scenes.ts</code>; <code>as</code> still wins), the plain chat box (no character's own box, no side face), nobody of the group dimmed, the first one's blip when there is no voice. Someone else's voice under a line: <code>say('anna', 'Hm.', { voice: { anna: 7, jack: 3 } })</code>. All clips start together; the line counts as voiced until the longest ends (auto-play, "Voices play to the end"); each plays at its speaker's volume and mute. In .vn: <code>jack &amp; anna(3, 7): Bye!</code> and <code>anna(7, jack 3): Hm.</code>. A clip that is not recorded yet is left out; the others still play.</li>
+  <li><b>Speaker</b> in the name: the character id; a named speaker without a character (<code>"Student A"</code>) is <code>student_a</code>; plain narration is <code>narrator</code>.</li>
+  <li><b>A line without a number has no voice</b>, even when a file with a fitting name exists. Editing a line's text never changes its file.</li>
+  <li><b>A number whose clip is not recorded yet</b> plays nothing (the blip plays instead). <code>pnpm story --voice</code> writes <code>build/voice-script.csv</code>: every numbered line with its speaker, text and the file to record (see <a href="../../systems/tools.html#story">Tools</a>).</li>
+  <li id="voice-languages"><b>Voice languages</b>: the folders in <code>audio/voice</code>, listed in <code>scenes.ts</code> as <code>voice.languages: ['ja', 'en']</code>. They are their own player setting, apart from the text language: with more than one, the player picks in <b>Settings → Audio → Voice language</b>. The first is the default: every new player hears it, whatever their text language. A clip missing in the picked language plays from the first language in the list that has it. The names in the picker: <code>voice.languageNames: { ja: 'Japanese' }</code> (left out: the text language with that code, else the code). The codes need not be text languages (<code>'dub'</code>, <code>'classic'</code>). <a href="../../systems/audio.html#music-languages">Music</a> and <a href="stage.html#movie-languages">movies</a> in language folders follow the same setting and order.</li>
+  <li>The clip stops when the player continues, unless they turn on <b>Voices play to the end</b> (Settings → Audio).</li>
+  <li>The music goes quieter while a clip plays (<b>Lower music under voices</b>).</li>
+  <li>Each character with a voice clip (in any language) gets a portrait in <b>Settings → Voices</b> (force it with <code>voiced: true</code> / <code>false</code> in the character's file). The player picks a portrait (the first is picked), then sets that character's volume with the slider or mutes them with the speaker button (the slider greys out; the volume comes back on unmute). On a phone the portraits stay in one row that scrolls sideways; elsewhere they fill up to two rows, then scroll sideways (<code>TILE</code> and <code>ROWS</code> at the top of <code>src/content/windows/settings/Voices.tsx</code>). The tile shows the character&#39;s <a href="../../world/art.html#face-box">face box</a> (the top of the default portrait when there is none).</li>
+  <li>In the <b>log</b>, lines with a voice have a ▶ button that plays the whole line (all its voices together; left / right step through them on a keyboard or pad).</li>
+  <li id="favourite-voices"><b>Favourite voices</b>: next to ▶ each voiced line has a ☆. A starred line is kept on this device (across saves and new games, not in a save file) and plays again from <b>Extras → Voices</b>, where the ★ takes it off the list. In <code>scenes.ts</code>: <code>voice.favourites: { on: true, max: 200 }</code> (<code>on: false</code> removes the star and the tab; <code>max</code> = how many a player can keep). From code: <code>game.extras.favouriteVoices()</code>, <code>isFavouriteVoice(voices)</code>, <code>toggleFavouriteVoice(line)</code>, <code>playFavouriteVoice(line)</code>. The name and text are kept as they were shown (in the language played then); the clips play in the voice language set now. A line with several voices is one favourite and plays them all.</li>
+  <li><b>Auto</b> waits for the clip to end, then for the auto-play pause.</li>
+  <li><b>Lip sync</b>: on a voiced line the speaker's mouth (a layered portrait with <code>talk</code>) moves with the clip: open while it is loud enough, shut in its pauses and when it ends. With several voices each mouth follows its own clip (and shuts when that clip ends, while the others may go on). Lines without a clip flap while the text types (every speaker of a line said together). Tune or switch it off in <code>src/content/scenes.ts</code>: <code>voice.lipSync: { on, threshold, holdMs, checkMs }</code> (<code>checkMs</code>: how often the loudness is checked).</li>
+</ul>
+<p>Defaults (how much quieter, the two switches, languages, digits) are in <code>src/content/scenes.ts</code> under <code>voice</code>.</p>
+
+
+<h2 id="choices">Choices</h2>
+<pre><code>// Keys → the chosen key (typed)
+const pick = await choice({
+  shop: 'Do you sell anything?',
+  past: { label: 'About your friend…', hidden: !game.flags.get('met_anna') },        // not shown
+  join: { label: 'Come along?', disabled: game.relationships.get('anna') &lt; 10 &amp;&amp; 'She doesn't know you well enough yet.' },
+  bye: 'Bye!',
+}, { timeout: 5000, default: 'bye' })       // a bar runs out, then 'bye' is chosen
+
+// A list → the chosen index
+const i = await choice(['Rock', 'Paper', 'Scissors'])</code></pre>
+<ul>
+  <li><code>hidden</code>: not shown. <code>disabled</code>: shown greyed out; a string explains why.</li>
+  <li>No answer is focused when the choices appear, so pressing confirm quickly through the dialogue can't pick one by accident. The first down (or up) focuses the first (or last) answer; confirm picks from then on. Clicks and taps pick directly.</li>
+  <li>Timed choices pick <code>default</code> (or the first allowed option) when time runs out.</li>
+  <li>Keyboard/gamepad: up/down and confirm. A text in a variable needs <code>tx()</code> to be found for <a href="../../interface/translations.html#finding">translation</a>.</li>
+</ul>
+
+<h3 id="chosen">Answers picked before</h3>
+<p>An answer the player has picked before, in any playthrough, is marked: <code>choices: { markChosen: true, chosenMark: &#39;✓ &#39; }</code> in <code>content/scenes.ts</code>, and the look <code>choiceChosen</code> in <code>content/look/parts.ts</code>. Set <code>markChosen: false</code> to switch it off. Where the answers sit and how they look: <a href="stage.html#choice-layout"><code>src/content/ui/Choice.tsx</code></a>.</p>
+
+</main>
+</div>
+</body>
+</html>

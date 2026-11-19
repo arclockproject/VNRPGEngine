@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dialogue scripts (.vn) · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Dialogue scripts (.vn)</h1>
+
+<p class="lead">Write a scene as plain text. <code>events/town/sign/index.vn</code> becomes the event <code>'town/sign'</code>, just like an <code>index.ts</code> would. So does the single file <code>events/town/sign.vn</code>.</p>
+
+<h2 id="example">An example</h2>
+<pre><code class="language-vn"># The town sign. Lines starting with # are comments.
+title The town sign
+> An old wooden sign. Someone carved a message into it.
+> {i}"Welcome to town. Be kind to the slimes."{/i}
+
+if flag('read_sign'):
+  > You have read it before. It hasn't changed.
+else:
+  set read_sign = true
+  > Behind the sign, half buried, something glints.
+  choice:
+    * Dig it up
+      give apple
+      money +5
+      > An apple and a few coins. Lucky!
+    * Leave it
+      > You leave it where it is.</code></pre>
+<p>A file in <code>src/content/routes/</code> is a route script instead (the story's order in visual novel mode): see <a href="routes.html#vn">Routes &amp; flowchart</a>.</p>
+<p>Every file needs one <code>title</code> line (not indented, usually at the top): the event&#39;s name on saves made during it, like a map&#39;s title.</p>
+<p>Blocks are made by indenting (spaces): the options of a <code>choice:</code>, and the body of <code>if</code> / <code>elif</code> / <code>else</code>. Blank lines don't matter.</p>
+
+<h2 id="files">One file per scene</h2>
+<p>A scene does not need a folder of its own. Any <code>&lt;name&gt;.vn</code> file in <code>src/content/events/</code> or one of its group folders is an event, named by its path:</p>
+<pre><code class="language-sh">src/content/events/
+  common/day1_morning.vn        # the event 'common/day1_morning'
+  common/day1_lunch.vn          # 'common/day1_lunch'
+  common/day1_evening/index.vn  # 'common/day1_evening' (a folder, e.g. to keep its pictures with it)
+  common/_notes.vn              # ignored (starts with _)</code></pre>
+<ul>
+  <li>The generated file sits next to it (<code>day1_morning.gen.ts</code>).</li>
+  <li>Voice files, saves and read lines go by the event id, so a scene can move between the two forms freely. When you turn a folder into a file, delete the folder (a folder and a file with the same name: the folder wins, with a warning).</li>
+  <li>Only .vn scenes can be single files; a scene written in TypeScript keeps its folder with <code>index.ts</code>.</li>
+</ul>
+
+<h2 id="how">How it works</h2>
+<ul>
+  <li>The file is compiled to <code>index.gen.ts</code> next to it: on save while the dev server runs, and by <code>pnpm gen</code> / <code>pnpm typecheck</code>. Don't edit the generated file.</li>
+  <li>The generated code is ordinary TypeScript, so wrong ids are type errors in <code>pnpm typecheck</code>. Every generated line has a comment with its <code>.vn</code> line number.</li>
+  <li>Mistakes are also printed by the dev server, e.g. <code>[vn] events/town/sign/index.vn:12:6: unknown item "aple" (did you mean "apple"?)</code>.</li>
+  <li>A folder with both <code>index.ts</code> and <code>index.vn</code> uses the <code>index.ts</code>.</li>
+  <li>Translations: <code>pnpm lang</code> reads <code>.vn</code> files too (lines, options, narration).</li>
+</ul>
+
+<h2 id="lines">Lines</h2>
+<table>
+  <tr><th>Write</th><th>Does</th></tr>
+  <tr><td><code>anna: Hello!</code></td><td>Anna says it</td></tr>
+  <tr><td><code>anna:happy: Hello!</code></td><td>…and switches to her <code>happy</code> pose (shows her if needed)</td></tr>
+  <tr><td><code>anna(italic, speed 0.5): Hello!</code></td><td>…with <a href="#line-options">line options</a> in round brackets, before the colon</td></tr>
+  <tr><td><code>jack &amp; anna:happy: Bye!</code></td><td>Said together: name tag "Jack &amp; Anna", the plain chat box, nobody of them dimmed. Voices: <code>jack &amp; anna(3, 7): Bye!</code> (one number per speaker, in name order). See <a href="events/scripts.html#together">Several voices</a></td></tr>
+  <tr><td><code>"Student A": Hello!</code></td><td>A speaker who is no character: the name in quotes is shown as written (and can be translated). No portrait, no folder needed</td></tr>
+  <tr><td><code>&gt;(italic) Text</code></td><td>Narration with line options (no space between <code>&gt;</code> and the bracket)</td></tr>
+  <tr><td><code>&gt; Text</code></td><td>Narration</td></tr>
+  <tr><td><code># comment</code></td><td>Ignored</td></tr>
+  <tr><td><code>$ any TypeScript</code></td><td>One line of code, e.g. <code>$ await game.maps.npc('jack').play('wave')</code></td></tr>
+</table>
+<h3 id="line-options">Line options</h3>
+<p>Separate them with commas: <code>anna:happy(12, as ???): Guess who.</code></p>
+<table>
+  <tr><th>Option</th><th>Does</th></tr>
+  <tr><td><code>as ???</code> · <code>as "Anna, the baker"</code></td><td>Shows another name for this line (quotes when it has a comma)</td></tr>
+  <tr><td><code>italic</code> · <code>shake</code></td><td>Slanted / shaking text</td></tr>
+  <tr><td><code>size small</code> · <code>size large</code> · <code>color #ffcc00</code></td><td>Text size and colour</td></tr>
+  <tr><td><code>speed 0.5</code></td><td>Typing speed (2 = twice as fast)</td></tr>
+  <tr><td><code>auto 800</code></td><td>Continues by itself 800 ms after the text is shown</td></tr>
+  <tr><td><code>nopause</code></td><td>No short pause after . ! ? while typing</td></tr>
+  <tr><td><code>jack 3</code> · <code>jack town/x/jack_0001</code></td><td>Another voice too, from someone who is not the shown speaker: <code>anna(7, jack 3): Hm.</code> (both clips start together)</td></tr>
+  <tr><td><code>12</code> · <code>0012</code> · <code>voice town/arrival/anna_0003</code></td><td>The line's voice number (its file: <code>audio/voice/&lt;language&gt;/&lt;event id&gt;/anna_0012.*</code>) / a clip of another event. No number = no voice. See <a href="events/scripts.html#voices">Voices</a></td></tr>
+  <tr><td><code>face happy</code></td><td>The pose of the <a href="events/stage.html#side-image">side image</a> for this line</td></tr>
+  <tr><td><code>thought</code> (any other word)</td><td>A named line style from <code>lineStyles</code> in <code>src/content/scenes.ts</code>: <code>hero(thought): I wonder...</code>. One per line; the other options win over it</td></tr>
+</table>
+<pre><code>// src/content/scenes.ts
+lineStyles: {
+  thought: { italic: true },
+  whisper: { size: 'small', speed: 0.7 },
+  shout: { size: 'large', shake: true },
+},</code></pre>
+<p>Put a value into a line with <code>[ ]</code>, like Ren'Py: <code>anna: You have [money()] coins.</code> Inside the brackets is TypeScript (a variable from a <code>$</code> line, a helper, <code>game.…</code>). Translators see <code>{money}</code>. Write <code>[[</code> for a plain <code>[</code>.</p>
+<p>Text supports the same <a href="events/scripts.html#markup">markup</a>: <code>{b}</code>, <code>{i}</code>, <code>{color=…}</code>, <code>{size=…}</code>, <code>{shake}</code>, <code>{wave}</code>, <code>{w=0.5}</code>.</p>
+
+<h2 id="commands">Commands</h2>
+
+<table>
+  <tr><th>Command</th><th>Same as</th></tr>
+  <tr><td><code>show anna at left pose happy flip</code></td><td><code>show('anna', { at: 'left', pose: 'happy', flip: true })</code> (all parts optional)</td></tr>
+  <tr><td><code>show anna distance close</code></td><td>How near she stands: a name from <code>stage.distances</code> in <code>src/content/scenes.ts</code></td></tr>
+  <tr><td><code>show anna tint night</code> · <code>show anna tint none</code></td><td>A tint or filter on her only (<a href="events/stage.html#tints">tints</a>)</td></tr>
+  <tr><td><code>show anna frame 0.65 1</code> · <code>frame anna 0 0.35 ms 2500</code></td><td>Which part of her picture fills the stage (top to bottom, 0..1): show it at once, or animate to it (<a href="events/stage.html#frame-moment">framing</a>)</td></tr>
+  <tr><td><code>@start</code> · <code>@start wave trust</code></td><td>Dev only: the dev server opens the game at this line (<a href="routes.html#dev-start">more</a>). Builds refuse it</td></tr>
+  <tr><td><code>hide anna</code> / <code>hide</code></td><td>Remove one / everyone</td></tr>
+  <tr><td><code>bg street</code> · <code>bg town/bus_stop evening</code></td><td><code>bg(…)</code>: a background from <a href="events/stage.html#background-library">src/content/backgrounds</a>; one with variants (an .aseprite + index.ts) needs the variant</td></tr>
+  <tr><td><code>bg #203040</code> · <code>bg black</code> · <code>bg /img/sky.png</code> · <code>bg none</code></td><td><code>background(…)</code>: a colour (<code>#…</code>, <code>rgb(…)</code>, a basic colour word), a file or URL, or none = the map</td></tr>
+  <tr><td><code>bg #203040 with wipeLeft 800</code> · <code>cg pond_memory with swirl</code></td><td>…through a <a href="events/stage.html#transitions">mask transition</a> (ms optional)</td></tr>
+  <tr><td><code>movie /video/opening.mp4</code></td><td><code>await movie(…)</code>: plays a <a href="events/stage.html#video">video</a>, then goes on</td></tr>
+  <tr><td><code>image letter /img/letter.png x 50 y 40 width 30 layer top ms 500</code> · <code>image letter none</code> · <code>image none</code></td><td><a href="events/stage.html#images">Pictures on stage</a>: show or move one, take one away, take all away. Also <code>height</code>, <code>opacity</code>, <code>scale</code>, <code>rotate</code></td></tr>
+  <tr><td><code>weather snow 0.5</code> · <code>weather none</code></td><td><a href="events/stage.html#scene-weather">Weather in the scene</a> (intensity optional)</td></tr>
+  <tr><td><code>move anna hop</code></td><td>A <a href="events/stage.html#moves">named move</a></td></tr>
+  <tr><td><code>nvl on</code> · <code>nvl clear</code> · <code>nvl off</code></td><td><a href="events/stage.html#nvl">Full-page text</a>: start, new page, back to the box</td></tr>
+  <tr><td><code>ending true_end</code></td><td>Marks an <a href="events/flow.html#endings">ending</a> as reached</td></tr>
+  <tr><td><code>title The town sign</code></td><td>The event&#39;s title (required, once, not indented): shown on saves</td></tr>
+  <tr><td><code>chapter town</code></td><td>A <a href="events/flow.html#chapters">chapter</a> begins here (<code>await chapter("town")</code>: the stage lines after it go under a covering card)</td></tr>
+  <tr><td><code>$ const name = await input('Your name?')</code></td><td><a href="events/flow.html#input">Asking for text</a> (then <code>anna: Hi [name]!</code>)</td></tr>
+  <tr><td><code>cg pond_memory</code> · <code>cg pond_memory crying.full_moon</code> · <code>cg none</code></td><td>Gallery picture or one of its variants (and unlock it)</td></tr>
+  <tr><td><code>inset sneaking red_girl</code> · <code>inset closeup ms 800</code> · <code>inset none</code></td><td>A <a href="events/stage.html#insets">framed picture in the middle</a> (src/content/insets, optional variant and fade ms)</td></tr>
+  <tr><td><code>filter flashback</code> · <code>filter none</code></td><td>Filter preset or tint over the whole stage</td></tr>
+  <tr><td><code>filter evening on characters</code> · <code>filter night on anna</code> · <code>filter none on background</code></td><td>Only one part: <code>all</code>, <code>background</code>, <code>characters</code> or a character (<a href="events/stage.html#tints">tints</a>)</td></tr>
+  <tr><td><code>fade #000 400</code> · <code>fade none 400</code></td><td>Fade to a colour / back</td></tr>
+  <tr><td><code>wait 0.5</code></td><td>Pause (seconds)</td></tr>
+  <tr><td><code>music music/town</code> · <code>music none</code> · <code>ambient ambient/rain</code> · <code>sfx sfx/click</code></td><td>Sound</td></tr>
+  <tr><td><code>event anna/flashback</code></td><td>Run another event here</td></tr>
+  <tr><td><code>set met_anna = true</code> · <code>set talks += 1</code> · <code>set talks -= 1</code></td><td>Flags (the value is TypeScript)</td></tr>
+  <tr><td><code>give apple 2</code> · <code>take apple</code></td><td>Items (with a toast when given)</td></tr>
+  <tr><td><code>money +10</code> · <code>money -5</code></td><td>Money</td></tr>
+  <tr><td><code>love anna +3</code></td><td>Relationship points (with a toast)</td></tr>
+  <tr><td><code>rename god "Evil God"</code> · <code>reveal god</code></td><td>Show another name / the real name from now on (<a href="../world/characters.html#names">Names that change</a>)</td></tr>
+  <tr><td><code>xp 20</code> · <code>join anna</code></td><td>Party XP · add to the party</td></tr>
+  <tr><td><code>achievement builder</code> · <code>codex anna</code></td><td>Unlock</td></tr>
+  <tr><td><code>quest start jacks_letter</code> · <code>quest step jacks_letter read</code> · <code>quest done jacks_letter</code></td><td>Quests</td></tr>
+  <tr><td><code>window inventory</code> · <code>shop anna</code></td><td>Open a window / shop</td></tr>
+  <tr><td><code>battle slime, bat</code><br><code>battle wolf_pack</code></td><td>A battle (waits for it): enemies, or a troop from <code>content/troops</code></td></tr>
+  <tr><td><code>end</code> (or <code>return</code>)</td><td>Stop the event here</td></tr>
+</table>
+
+<h2 id="together">At the same time</h2>
+<p>Commands like <code>fade</code> wait until they finish. Put <code>meanwhile</code> in front to start one and go on at once:</p>
+<pre><code class="language-vn">meanwhile fade #ffffff51 2000
+meanwhile $ await animate('god', { opacity: 1 }, { duration: 1000 })
+hero: Ehh... What?</code></pre>
+<p><code>together:</code> starts every line below it at once and goes on when all of them are done:</p>
+<pre><code class="language-vn">together:
+  hero: Ehh... What?
+  fade #ffffff51 2000
+  $ startShake(6)
+fade #ffffff 2000</code></pre>
+<ul>
+  <li>There is one chat box, so only one line in a <code>together:</code> block can be dialogue, narration, a choice or an event.</li>
+  <li>Dialogue can't be <code>meanwhile</code> (it always waits for the player); <code>wait</code>, <code>event</code> and <code>end</code> can't either. <code>end</code> can't be inside <code>together:</code>.</li>
+  <li>A block inside <code>together:</code> (an <code>if</code>, a <code>choice</code>) counts as one line: its own lines run in order.</li>
+</ul>
+
+<h2 id="blocks">Choices and conditions</h2>
+<p>Condition helpers: <code>flag('name')</code>, <code>has('item')</code>, <code>love('anna')</code>, <code>money()</code>, <code>inParty('hero')</code>, <code>seen('event/id')</code> (see <a href="events/flow.html#run-once">Run once</a>) and <code>variant('adult')</code> (this build's <a href="../systems/variants.html">content variant</a>).</p>
+<pre><code class="language-vn">choice:
+  * Yes, please
+    anna: Great!
+  * Only friends see this if love('anna') &gt;= 10 and not flag('met_anna')
+    > A secret option.
+  * No
+
+if flag('met_anna'):
+  anna: Again?
+elif has('apple', 2) or money() &gt; 50:
+  anna: Rich!
+else:
+  anna: Hi.</code></pre>
+<ul>
+  <li>An option with <code>if …</code> at the end is hidden unless the condition is true.</li>
+  <li>Conditions are TypeScript with helpers and the words <code>and</code>, <code>or</code>, <code>not</code>.</li>
+</ul>
+<table>
+  <tr><th>Helper</th><th></th></tr>
+  <tr><td><code>flag('met_anna')</code></td><td>A flag's value</td></tr>
+  <tr><td><code>has('apple')</code>, <code>has('apple', 3)</code></td><td>Carrying it</td></tr>
+  <tr><td><code>love('anna')</code></td><td>Relationship points</td></tr>
+  <tr><td><code>money()</code></td><td>Money</td></tr>
+  <tr><td><code>inParty('anna')</code></td><td>In the party</td></tr>
+  <tr><td><code>seen('anna/hello')</code></td><td>That event has started in this playthrough</td></tr>
+  <tr><td><code>variant('adult')</code></td><td>This build is that <a href="../systems/variants.html">content variant</a></td></tr>
+</table>
+<p>Anything else: write TypeScript, e.g. <code>if game.clock.hour() &gt;= 20:</code> or <code>$ const roll = random()</code>. <code>game</code>, <code>ctx</code> and every scene command (<code>say</code>, <code>show</code>, <code>animate</code>, <code>camera</code>, <code>shake</code>, <code>flash</code>, <code>random</code>…) are available by name.</p>
+
+<h2 id="extension">Editor extension</h2>
+<p>For VSCodium / VS Code: colouring, suggestions and red underlines while you type.</p>
+<ol>
+  <li>Build it: <code>pnpm vn:extension</code> → <code>build/vn-extension/EngineToolKit-&lt;version&gt;.vsix</code>.</li>
+  <li>In the editor's Extensions view: the <b>…</b> menu → <b>Install from VSIX…</b> → pick that file.</li>
+</ol>
+<ul>
+  <li><b>Suggestions by context:</b> characters and commands at the start of a line, poses after <code>anna:</code> or <code>pose</code>, stage positions after <code>at</code>, items after <code>give</code>, enemies and troops after <code>battle</code>, sounds after <code>music</code>, flags after <code>set</code> or inside <code>flag('</code>, markup tags after <code>{</code>.</li>
+  <li><b>Checks as you type:</b> unknown ids with "did you mean", lines it doesn't understand, bad indentation, a voice number one speaker already used in the file.</li>
+  <li><b>Voice numbers:</b> after <code>anna(</code> the first suggestion is Anna's next free number in this file (<code>0008</code>); after <code>voice </code> the recorded clips of other events.</li>
+  <li><b>New content works at once.</b> The ids are read from the open project and re-read when anything in <code>src/content</code> changes. You only rebuild/reinstall when the extension itself changes (bump the version in <code>tools/vscode-vn/package.json</code>).</li>
+  <li>The title bar button <b>VN: Show generated TypeScript</b> opens the <code>index.gen.ts</code> beside it.</li>
+</ul>
+<p class="muted">The rules live in <code>vite/vn/</code>: <code>compile.ts</code> (to TypeScript), <code>check.ts</code> (ids), <code>complete.ts</code> (suggestions), <code>ids.ts</code> (reads the project). The extension and the dev server share them.</p>
+<h3 id="new-command">Adding a command</h3>
+<ol>
+  <li>Add a <code>case</code> in <code>command()</code> in <code>vite/vn/compile.ts</code> (it returns one line of TypeScript).</li>
+  <li>If its argument is an id, add it to <code>COMMAND_ARGS</code> in <code>check.ts</code>; add a suggestion to <code>COMMANDS</code> in <code>complete.ts</code>; add the word to the grammar in <code>tools/vscode-vn/syntaxes/vn.tmLanguage.json</code>.</li>
+  <li>Add a test in <code>vite/vn/*.test.ts</code>, update this page, rebuild the extension.</li>
+</ol>
+</main>
+</div>
+</body>
+</html>

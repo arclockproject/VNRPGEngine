@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maps &amp; the world · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Maps &amp; the world</h1>
+
+<p class="lead">Maps are 2D tile worlds drawn with PixiJS. You make them in Tiled and add behaviour in TypeScript.</p>
+
+<h2 id="tiled-maps">Tiled maps</h2>
+<p>Put the <code>.tmx</code> next to the map's <code>index.ts</code>. Every time you save it in Tiled, a typed <code>town.gen.ts</code> is written next to it.</p>
+<pre><code>// src/content/maps/countryside/town/index.ts
+import { defineMap } from '@/core/define'
+import town from './town.gen'
+
+export default defineMap({
+  title: 'Town',
+  music: 'music/town',
+  outdoor: true,
+  tiled: town,
+  // Behaviour for objects placed in Tiled, by their Tiled name (typed: a wrong name is an error).
+  objects: {
+    jack: { character: 'jack', facing: 'left', onInteract: ({ game }) =&gt; game.events.start('jack/hello') },
+    sign: { onInteract: ({ game }) =&gt; game.events.start('town/sign') },
+  },
+  // Extra objects made in code, added to the ones from Tiled.
+  extraObjects: [],
+})</code></pre>
+<div class="tip">Content Tiled can describe (doors, props, sound zones, encounter areas, spawns) belongs in the <code>.tmx</code>. Use code for behaviour (<code>onInteract</code>, schedules, scripts).</div>
+
+<h3 id="tiled-reference">What Tiled things mean</h3>
+<table>
+  <tr><th>In Tiled</th><th>Meaning</th></tr>
+  <tr><td>Tile property <code>solid</code> = true</td><td>The whole tile blocks movement</td></tr>
+  <tr><td>Shapes drawn in the <b>Tile Collision Editor</b></td><td>Only that part of the tile blocks (a fence: its bottom half). Wins over <code>solid</code>. See <a href="#tile-collision">Collision smaller than a tile</a></td></tr>
+  <tr><td>Layer property <code>collision</code> = true</td><td>Not drawn; any tile on it is solid</td></tr>
+  <tr><td>Layers after the first object layer, or layer property <code>above</code> = true</td><td>Always drawn over the player (treetops, the map border)</td></tr>
+  <tr><td>Layer property <code>sorted</code> = true</td><td>Buildings, walls, fences: in front of or behind the player depending on who is lower on screen. See <a href="#sorted-layers">Houses and roofs</a></td></tr>
+  <tr><td>Tile animations (Tiled's animation editor)</td><td>Play on the map</td></tr>
+  <tr><td>Groups, layer opacity and visibility</td><td>Respected (hidden layers aren't drawn)</td></tr>
+  <tr><td>Object class <code>spawn</code> (+ property <code>facing</code>)</td><td>A named start position. The first spawn is the default.</td></tr>
+  <tr><td>Object class <code>door</code></td><td>An exit, see <a href="#doors">Doors</a></td></tr>
+  <tr><td>Object class <code>zone</code></td><td>Its own music/ambient sound, see <a href="../systems/audio.html#zones">Audio</a></td></tr>
+  <tr><td>Object class <code>encounter</code></td><td>Random battles (properties <code>enemies</code> and / or <code>troops</code>), see <a href="../gameplay/battles.html#encounters">Encounters</a></td></tr>
+  <tr><td>Object class <code>enemy</code> (+ property <code>enemy</code>, optional <code>troop</code>)</td><td>An enemy to fight, see <a href="../gameplay/battles.html#map-enemies">Enemies on the map</a></td></tr>
+  <tr><td>Object class = a prop name (<code>chest</code>)</td><td>That prop, see <a href="#props">Props</a>. Custom properties are passed to it.</td></tr>
+  <tr><td>Object properties <code>solid</code>, <code>label</code>, <code>color</code>, <code>facing</code></td><td>Simple objects; a name lets code give it behaviour</td></tr>
+  <tr><td>Tile objects (inserted tiles)</td><td>Drawn from the tileset, anchored bottom-left like in Tiled. Collision shapes on their tile make them solid there (unless <code>solid</code> is set)</td></tr>
+  <tr><td>Objects placed between tiles</td><td>Stay exactly where you put them, see <a href="#off-grid">Off-grid objects</a></td></tr>
+</table>
+<ul>
+  <li>Only orthogonal, finite maps. Tilesets: embedded, or external <b><code>.tsj</code></b> (JSON). Not <code>.tsx</code>, which clashes with TypeScript's file extension.</li>
+  <li>Saving a tileset (<code>.tsj</code>) regenerates every map that uses it.</li>
+  <li><code>content/maps.test.ts</code> checks every map: spawns on walkable tiles, doors to real maps and spawns, existing props, sprite animations, schedule spots.</li>
+</ul>
+
+<h3 id="tile-collision">Collision smaller than a tile</h3>
+<p>In the tileset, select a tile and open <b>Tile Collision Editor</b> (View &gt; Tile Collision Editor). Draw rectangles over the parts that should block. A fence drawn with one rectangle over its bottom half lets the player walk right up to it from above.</p>
+<ul>
+  <li>Use rectangles. Ellipses and polygons work, but only their bounding box counts (you get a warning).</li>
+  <li>Shapes flip and rotate with the tile, and work on tiles in structures too.</li>
+  <li>The dev panel's <b>collision</b> button shows them (orange boxes).</li>
+  <li>NPC paths (<code>walkTo</code>, schedules) treat a tile with any shape on it as blocked.</li>
+</ul>
+
+<h3 id="sorted-layers">Houses and roofs (sorted layers)</h3>
+<p>A roof on an <code>above</code> layer is always drawn over the player. Standing right in front of the house, a tall sprite's head goes under the roof. Instead, paint the whole building (roof and wall) on a tile layer with the property <code>sorted</code> = true:</p>
+<ul>
+  <li>Touching tiles on that layer become one piece. Each piece is sorted by its <b>bottom edge</b>, like characters are by their feet.</li>
+  <li>Feet below the bottom edge (in front of the house): the player is drawn over the whole house. Feet above it (behind): the house covers the player.</li>
+  <li>Two things that touch (a house and a tree next to it) become one piece. Leave a gap, or put them on two sorted layers.</li>
+  <li>Fences go on a sorted layer too, so walking behind one hides your legs.</li>
+  <li>Collision still comes from <code>solid</code>, collision layers and collision shapes. Keep <code>above</code> layers for things that are always on top (treetops, the map border).</li>
+</ul>
+<p>Example: <code>maps/countryside/town/town.tmx</code>, layer <b>Buildings</b>.</p>
+
+<h3 id="picture-layers">Picture layers: far hills, fog, clouds</h3>
+<p>A Tiled <b>image layer</b> becomes a picture behind the map or over it. Below the first object layer it is drawn behind everything; after it (or with the property <code>above</code>) it covers the map and the player.</p>
+<table>
+  <tr><th>In Tiled</th><th></th></tr>
+  <tr><td>Parallax X / Y</td><td>1 = moves with the map, 0.5 = half as fast (far away), 0 = fixed on the screen.</td></tr>
+  <tr><td>Repeat X / Y</td><td>Tiles the picture in that direction.</td></tr>
+  <tr><td>Offset, Opacity</td><td>Where it starts (map pixels) and how see-through it is.</td></tr>
+  <tr><td>Properties <code>driftx</code>, <code>drifty</code></td><td>It moves by itself, map pixels per second (clouds, fog).</td></tr>
+  <tr><td>Property <code>blend</code></td><td><code>add</code>, <code>multiply</code> or <code>screen</code> (light shafts, cloud shadows).</td></tr>
+</table>
+
+<h3 id="off-grid">Off-grid objects</h3>
+<p>Objects don't have to sit on the grid. Turn off snapping in Tiled (or hold Ctrl while dragging) and place them anywhere. Their <code>at</code> becomes the nearest tile and the rest goes in <code>offset</code> (in tiles, e.g. <code>{ x: 0.375, y: 0.25 }</code>).</p>
+<ul>
+  <li>Drawing, labels, lights, NPC collision slices and sorting use the exact spot.</li>
+  <li>Solid simple objects block their exact area. Triggers (<code>onEnter</code>) fire when the player's centre is inside it. Interaction checks the exact area too.</li>
+  <li>NPCs start at the exact spot. Scripted walks move them by whole tiles from there.</li>
+  <li>In code, set <code>offset</code> yourself: <code>{ at: { x: 4, y: 2 }, offset: { x: 0.5, y: 0 }, texture: lamp }</code>.</li>
+</ul>
+
+<h2 id="map-options">Map options and hooks</h2>
+<table>
+  <tr><th>Option</th><th></th></tr>
+  <tr><td><code>title</code></td><td>Name (save slots, dev tools)</td></tr>
+  <tr><td><code>music</code></td><td>Track id. <code>null</code> = silence. Leave it out to keep what's playing.</td></tr>
+  <tr><td><code>ambient</code></td><td>Background loop. Left out = the weather's sound. <code>null</code> = none.</td></tr>
+  <tr><td><code>zoom</code></td><td>How close this map is: <code>2</code> = twice as close, <code>0.5</code> = see twice as much. Default <code>1</code>: <code>map.tilesHigh</code> tiles fit the screen height (see <a href="#zoom">Zoom</a>).</td></tr>
+  <tr><td><code>background</code></td><td>Colour around the map</td></tr>
+  <tr><td><code>outdoor</code></td><td>Tinted by the time of day</td></tr>
+  <tr><td><code>lighting</code></td><td>A fixed colour over the map: <code>{ tint: '#000', strength: 0.6 }</code> (any CSS colour) (caves, indoors at night)</td></tr>
+  <tr><td><code>weather</code></td><td><code>{ kind: 'rain', intensity: 0.5 }</code>: rain, snow, petals, embers, or your own from <code>content/weather.ts</code></td></tr>
+  <tr><td><code>setup(ctx)</code></td><td>Right after the map is built, before it fades in. May return a cleanup function (runs when leaving).</td></tr>
+  <tr><td><code>onEnter(ctx)</code> / <code>onExit(ctx)</code></td><td>Once the map is visible / before leaving it</td></tr>
+</table>
+<p>Hooks get <code>{ game, world, params }</code>. <code>world</code> is the running map:</p>
+<pre><code>world.player.x / y / facing          // position in tiles (x 2.5 = middle of column 2)
+world.player.teleport({ x: 3, y: 4 }, 'down')
+world.npc('jack')                    // script an NPC or prop (see Characters)
+world.camera.follow('jack'); world.camera.panTo({ x: 10, y: 5 })
+await world.camera.zoom(2, { duration: 800 })   // closer (on top of the map's zoom); 1 = normal
+world.camera.reset()                 // follow the player again at zoom 1
+world.lighting('#000000', { strength: 0.6, duration: 500 })
+world.weather('snow', { intensity: 0.4 })
+world.onTick((dt) =&gt; { … })          // every frame while the map is shown; returns an unsubscribe
+world.root / world.tileSize           // the PixiJS container, for custom drawing</code></pre>
+
+<h3 id="zoom">Zoom</h3>
+<p>The map is sized by the screen height, not its resolution: the same screen ratio shows the same part of the map at the same size on 720p, 1080p or 4K. Set it in <code>src/content/config/screen.ts</code>:</p>
+<pre><code>map: {
+  tilesHigh: 12,        // tiles that fit the screen height
+  textHeight: 720,      // labels, bubbles and the prompt have their normal size at this height, and scale with it
+  pixelPerfect: false,  // true = whole screen pixels per art pixel (even pixels, view size varies a little)
+},</code></pre>
+<p>Three levels multiply: <code>tilesHigh</code> (whole game) × the map's <code>zoom</code> × <code>world.camera.zoom()</code> (scripts, also <code>game.maps.camera.zoom()</code>; back to 1 on a map change or <code>camera.reset()</code>).</p>
+
+<h3 id="changing-maps">Changing maps</h3>
+<pre><code>await game.maps.go('countryside/forest', {
+  spawn: 'from_town',            // typed spawn names; default: the first
+  transition: 'fade',            // or 'instant'
+  params: { boss: true },        // if the map takes params
+  position: { x: 4.5, y: 2.5, facing: 'up' },   // exact spot instead of a spawn
+})
+game.maps.preload('countryside/forest')   // load in the background
+game.maps.current()                       // 'countryside/town'</code></pre>
+<p>What happens, in order: fade out (300 ms) → load (a loading screen appears if it takes over 250 ms) → old map's <code>onExit</code> and cleanup → build → <code>setup</code> → intro event (if any, see below) → fade in → <code>onEnter</code>.</p>
+<h3 id="stuck">I'm stuck</h3>
+<p>The pause menu's "I'm stuck" (and <code>game.maps.unstuck()</code>) fades out and puts the player on the map's <code>when_stuck</code> spawn. Without one, it uses <code>spawn</code>. In Tiled, make a spawn object named <code>when_stuck</code>.</p>
+<h3 id="intro">Intro events</h3>
+<p>An <code>intro</code> event starts while the black cover is still up, so the map is never seen before the scene. Use it for a map's opening scene instead of <code>onEnter</code>:</p>
+<pre><code>export default defineMap({
+  intro: 'heaven/before_god/spawning',  // or a function: ({ game }) =&gt; 'x' | false
+  introOnce: true,                      // skip it after it ran once in this playthrough
+  …
+})</code></pre>
+<p>Its first <code>background()</code> appears at once (no crossfade from the map). Old saves and mid-scene loads do not start the intro.</p>
+<p class="hint">Starting an event with no map was considered and not done: saves and replays need a map.</p>
+<p>Calls made during a change wait their turn. The world is frozen while it changes and while an object's handler runs.</p>
+<p><b>Map params:</b> annotate the context type and the params become required in <code>maps.go</code>:</p>
+<pre><code>setup: ({ params }: MapContext&lt;{ boss: boolean }&gt;) =&gt; { if (params.boss) … }</code></pre>
+
+<h2 id="objects">Map objects</h2>
+<p>Everything placed on a map is an object: NPCs, signs, exits, invisible triggers. You give objects placed in Tiled behaviour by name in <code>objects</code>; objects that only exist in code go in <code>extraObjects</code>, written whole.</p>
+<table>
+  <tr><th>Field</th><th></th></tr>
+  <tr><td><code>at</code>, <code>size</code></td><td>Tile position and area (<code>{ w, h }</code>, default 1×1)</td></tr>
+  <tr><td><code>offset</code></td><td>Placed between tiles: <code>{ x, y }</code> in tiles from <code>at</code>, see <a href="#off-grid">Off-grid objects</a></td></tr>
+  <tr><td><code>id</code></td><td>Name for scripts (Tiled: the object's name)</td></tr>
+  <tr><td><code>label</code>, <code>color</code>, <code>texture</code>, <code>solid</code></td><td>Looks and collision of simple objects</td></tr>
+  <tr><td><code>onInteract(ctx)</code></td><td>Confirm while facing it</td></tr>
+  <tr><td><code>onEnter(ctx)</code></td><td>Stepping onto it</td></tr>
+  <tr><td><code>character</code>, <code>sprite</code>, <code>facing</code>, <code>animation</code>, <code>speed</code>, <code>turnToPlayer</code>, <code>schedule</code></td><td>Animated NPCs, see <a href="characters.html#npcs">Characters</a></td></tr>
+  <tr><td><code>prop</code>, <code>properties</code></td><td>A prop and its settings</td></tr>
+  <tr><td><code>door</code></td><td>An exit</td></tr>
+  <tr><td><code>light</code></td><td>Glows at night</td></tr>
+  <tr><td><code>music</code>, <code>ambient</code></td><td>A sound zone</td></tr>
+  <tr><td><code>encounters</code></td><td>Random battles in its area</td></tr>
+  <tr><td><code>enemy</code>, <code>fight</code></td><td>An enemy standing here, see <a href="../gameplay/battles.html#map-enemies">Enemies on the map</a></td></tr>
+</table>
+<p>Handlers get <code>{ game, world, object }</code> and may be async; the world waits for them (the player can't move or trigger anything meanwhile).</p>
+
+<h2 id="doors">Doors</h2>
+<p>In Tiled: an object with class <code>door</code>. No code needed.</p>
+<table>
+  <tr><th>Property</th><th></th></tr>
+  <tr><td><code>map</code></td><td>Target map id, e.g. <code>countryside/forest</code> (required)</td></tr>
+  <tr><td><code>spawn</code></td><td>Spawn in the target map (default: its first)</td></tr>
+  <tr><td><code>transition</code></td><td><code>fade</code> (default) or <code>instant</code></td></tr>
+  <tr><td><code>interact</code> (bool)</td><td>Needs the confirm button instead of walking onto it (house doors)</td></tr>
+</table>
+<pre><code>// The same in code:
+{ id: 'to_town', at: { x: 0, y: 5 }, size: { w: 1, h: 2 }, door: { map: 'countryside/town', spawn: 'from_forest' } }</code></pre>
+
+<h2 id="props">Props</h2>
+<p>Reusable objects with art and behaviour: chests, barrels, trees, campfires, pressure plates. Folder: <code>props/&lt;name&gt;/index.ts</code> with the art in <code>props/&lt;name&gt;/sprites/&lt;name&gt;.aseprite</code>.</p>
+<pre><code>import { defineProp } from '@/core/define'
+import type { ItemId } from '@/core/registry'
+import sprite from './sprites/chest.gen'
+
+export default defineProp({
+  sprite,
+  label: 'Chest',
+  animation: 'closed',               // start animation (default 'idle')
+  solid: true,                       // default true
+  light: undefined,                  // e.g. { radius: 4, flicker: 0.3 } for a campfire
+  setup: ({ prop, memory }) =&gt; {     // when it appears on a map
+    if (memory.get('open')) prop.idle('open')
+  },
+  onInteract: async ({ game, prop, memory, properties }) =&gt; {
+    if (memory.get('open')) return game.toast(game.t('The chest is empty.'))
+    memory.set('open', true)         // saved, per map and per prop
+    await prop.play('opening', { hold: true })
+    prop.idle('open')
+    game.items.add((properties.item ?? 'apple') as ItemId, 1, { notify: true })
+  },
+  // onEnter: walking over its "trigger" slices (or onto its tile)
+})</code></pre>
+<ul>
+  <li><b>In Tiled:</b> object class = the prop's name. The object's custom properties arrive as <code>properties</code> (the chest above reads <code>item</code>). Unnamed props get the id <code>chest_x_y</code>.</li>
+  <li><b>Collision and interaction</b> come from the sprite's slices (see <a href="art.html#slices">Art</a>).</li>
+  <li><code>memory</code> is a small saved key/value store per prop (open, broken, used…).</li>
+</ul>
+<pre><code>await game.props.spawn('barrel', { at: { x: 20, y: 9 }, id: 'house_barrel', map: 'countryside/town' })
+await game.props.spawn('barrel', { at: { x: 5, y: 5 }, save: false })   // gone after leaving the map
+game.props.remove('house_barrel'); game.props.has('house_barrel'); game.props.list()
+await game.props.get('house_barrel').play('idle')     // script any prop, also ones from Tiled</code></pre>
+
+<h2 id="structures">Structures</h2>
+<p>A small Tiled map stamped into a map while playing: a house that gets built, a bridge that appears. Tiles, collision and objects come along. Placements are saved.</p>
+<pre><code>// src/content/structures/house/index.ts  (+ house.tmx next to it)
+export default defineStructure({
+  tiled: house,
+  objects: { door: { onInteract: ({ game }) =&gt; game.events.start('jack/house_door') } },
+})
+
+await game.structures.place('house', { at: { x: 21, y: 3 }, id: 'jacks_house', map: 'countryside/town' })
+game.structures.has('jacks_house', { map: 'countryside/town' })
+await game.structures.canPlace('house', { x: 21, y: 3 })   // null, or what's wrong
+await game.structures.remove('jacks_house')</code></pre>
+<ul>
+  <li>Placing on another map just records it; it appears when you go there.</li>
+  <li>Placing throws if it's out of the map or would trap the player, unless <code>force: true</code>. A player standing on a new wall is moved to the nearest free tile.</li>
+  <li>The same id again moves/replaces it.</li>
+</ul>
+
+<h2 id="travel">Fast travel and the world map</h2>
+<pre><code>// src/content/travel.ts
+export default defineTravel({
+  inMenu: true,                    // "Travel" in the pause menu once two places are known
+  discoverOnVisit: true,           // walking onto a place's map adds it
+  blockedMaps: ['heaven/before_god'],          // no travelling away from these
+  worldMap: { show: true, ratio: 16 / 9 /*, image: worldPng */ },   // false = a plain list
+  places: {
+    town:   { name: tx('Town'), map: 'countryside/town', spawn: 'start', known: false, at: { x: 32, y: 58 } },
+    forest: { name: tx('Forest'), map: 'countryside/forest', spawn: 'from_town', known: false, at: { x: 68, y: 40 }, cost: 10 },
+  },
+})
+
+game.travel.open()                              // the window (world map)
+game.travel.discover('forest', { notify: true }); game.travel.knows('forest'); game.travel.forget('forest')
+await game.travel.go('forest')                  // null = arrived; else 'unknown' | 'here' | 'blocked' | 'busy' | 'money'
+game.travel.list()                              // known places: { id, name, description, here, problem }
+const places = usePlaces()                      // React</code></pre>
+<table>
+  <tr><th>Field</th><th></th></tr>
+  <tr><td><code>map</code>, <code>spawn</code></td><td>Where the place leads. Without <code>spawn</code>: the map's first spawn.</td></tr>
+  <tr><td><code>known: false</code></td><td>Hidden until found. Leave it out for places known from the start.</td></tr>
+  <tr><td><code>at</code></td><td>Its spot on the world map, in % of the board (0,0 = top left). Places without one are listed under the map.</td></tr>
+  <tr><td><code>cost</code></td><td>Money per trip.</td></tr>
+</table>
+<p>The world map is a plain board until you give it a picture (<code>worldMap.image</code>, with <code>ratio</code> = the picture's width / height). Travelling works only from a map, not during events or minigames. The window is <code>content/windows/travel</code>; found places are saved.</p>
+
+<h3 id="minimap">Minimap</h3>
+<pre><code>// src/content/config/screen.ts
+minimap: {
+  show: true,         // false = no minimap at all; true = shown, players can hide it (Settings)
+  size: 120,          // longest side, px
+  radius: 12,         // tiles around the player; 0 = always the whole map
+  colors: { ground: 'rgba(20, 28, 36, 0.78)', wall: 'rgba(170, 190, 205, 0.85)', player: '#ffd54a', door: '#5ad1ff', actor: '#ff8a65' },
+  doors: true, actors: true, opacity: 0.9,
+},
+
+// src/content/ui/Hud.tsx: where it sits
+&lt;Minimap sx={{ position: 'absolute', right: 16, top: 72 }} /&gt;   // the bottom corners belong to the touch controls
+
+// one map without it (a maze, a dream)
+export default defineMap({ minimap: false, /* … */ })</code></pre>
+<p>It shows what blocks the player (the same grid the collision uses), doors, characters and the player. It needs no art and follows built structures and spawned props by itself.</p>
+<p>With <code>show: true</code> players get <b>Show minimap</b> in Settings → General to hide it for themselves. With <code>show: false</code> there is no minimap and no switch (also never in visual novel mode).</p>
+
+<h2 id="time">Time of day</h2>
+<pre><code>// src/content/config/clock.ts
+export default defineClock({
+  minutesPerSecond: 1,     // a day lasts 24 real minutes; 0 = time stands still
+  startHour: 8,
+  tints: [
+    { hour: 0, tint: '#0b1640', strength: 0.55 },
+    { hour: 9, tint: '#ffffff', strength: 0 },
+    { hour: 19, tint: '#ff8a4c', strength: 0.22 },
+  ],                       // blended between hours, wraps around midnight; any CSS colour (#hex, rgb(), names)
+})</code></pre>
+<pre><code>game.clock.hour(); game.clock.minute(); game.clock.day(); game.clock.label()   // "08:30"
+game.clock.set(18, 30); game.clock.set(7, 0, { nextDay: true }); game.clock.advance(60)
+game.clock.pause(); game.clock.resume()</code></pre>
+<p>Time runs only while the player is free on a map, and is saved. It stops on the title screen, during events, minigames, open windows (menu, shop, inventory), map changes and while an object's <code>onInteract</code> runs. Scripts can still move it with <code>set</code>/<code>advance</code>. Only maps with <code>outdoor: true</code> follow the tint. NPC <a href="characters.html#schedules">schedules</a> and shop restocks use the clock too.</p>
+
+<h3 id="calendar">Calendar: weekdays, months, dated events</h3>
+<pre><code>// src/content/config/clock.ts
+export default defineClock({
+  // …
+  calendar: {
+    weekdays: [tx('Monday'), tx('Tuesday'), /* … */ tx('Sunday')],
+    months: [{ name: tx('Spring'), days: 30 }, { name: tx('Summer'), days: 30 }, /* … */],   // a year = all of them
+    start: { year: 1, month: 1, day: 1, weekday: 'Monday' },   // a new game's first day
+    format: tx('{weekday}, {day} {month}'),                    // also {monthNumber} {year}
+    dates: {
+      market_day: { name: tx('Market day'), weekday: 'Saturday' },                 // every week
+      new_year:   { name: tx("New Year's Day"), month: 1, day: 1 },                // once a year
+      harvest:    { name: tx('Harvest festival'), month: 3, day: 15, event: 'town/festival', hour: 18 },
+    },
+  },
+})
+
+game.clock.date()               // { index, year, month, monthName, day, weekday, weekdayIndex }
+game.clock.date(1).weekday      // tomorrow
+game.clock.dateLabel()          // "Monday, 1 Spring" (translated)
+game.clock.is('market_day')     // today? is('market_day', 1) = tomorrow?
+game.clock.today()              // [{ id: 'market_day', name: 'Market day' }]
+game.clock.daysUntil('harvest') // 0 = today, -1 = never
+const date = useDate()          // React: re-drawn when the day changes</code></pre>
+<ul>
+  <li>A named date matches when every field it gives matches: <code>month</code> + <code>day</code> is once a year, <code>weekday</code> every week, <code>day</code> alone every month, <code>year</code> narrows it to one year.</li>
+  <li>With <code>event</code>, that event starts by itself on such a day: once per day, as soon as the player is free on a map, not before <code>hour</code>. Sleeping past the day (<code>clock.set(…, { nextDay: true })</code>) skips it.</li>
+  <li>Use dates anywhere: a shop that opens on <code>market_day</code>, a line of dialogue, an NPC's <code>onInteract</code>.</li>
+  <li>Without <code>calendar</code> the game only counts days (<code>game.clock.day()</code>).</li>
+</ul>
+
+<h2 id="weather">Lighting and weather</h2>
+<pre><code>game.maps.lighting('#000000', { strength: 0.6, duration: 500 })  // until the next map; null = off
+game.maps.weather('rain', { intensity: 0.5 })                    // 'snow' | null</code></pre>
+<p>A map's own <code>lighting</code> wins over the clock tint. Rain plays its sound automatically (see <a href="../systems/audio.html#ambient">ambient</a>).</p>
+
+<h2 id="terrain">Terrain: what the ground does</h2>
+<pre><code>// src/content/terrain.ts
+export default defineTerrain({
+  footsteps: { volume: 0.4, everyTiles: 1, pitchSpread: 0.08 /*, default: 'sfx/step' */ },
+  kinds: {
+    grass:      { footstep: 'sfx/step_grass' },
+    tall_grass: { encounters: 2, speed: 0.85 },       // twice the random battles, a little slower
+    road:       { encounters: 0 },
+    mud:        { speed: 0.55 },
+    lava:       { damage: 3, damageSound: 'sfx/hit' }, // HP per tile, stops at 1 HP unless lethal: true
+    ladder:     { ladder: true, speed: 0.6 },          // faces up, moves only up / down
+  },
+})
+
+game.maps.terrain()   // the name under the player's feet, or undefined</code></pre>
+<table>
+  <tr><th>In Tiled</th><th></th></tr>
+  <tr><td>Tile property <code>terrain</code></td><td>On a tile in the tileset (string, a name from the list): every place that tile is painted.</td></tr>
+  <tr><td>Layer property <code>terrain</code></td><td>On a tile layer: every cell painted on it, whatever the tile. The layer may be hidden (a marker layer). An empty value clears the terrain there.</td></tr>
+</table>
+<p>Later layers win. <code>lethal: true</code> ground can bring the whole party down, which is a <a href="../gameplay/battles.html#game-over">game over</a>. <a href="../gameplay/battles.html#difficulty">Difficulty</a> can scale the damage and the battle chance.</p>
+
+<h3 id="pushable">Pushable objects</h3>
+<pre><code>// a prop: src/content/props/barrel/index.ts
+export default defineProp({
+  sprite,
+  pushable: true,
+  // pushReset: true,                       // back at its start every time the map is entered
+  onPushed: ({ game, to, on }) =&gt; {        // also `from`; `on` = ids of objects under it now
+    if (on.includes('plate')) game.flags.set('door_open', true)
+  },
+})
+
+// or one object on one map
+objects: { crate: { pushable: true, onPushed: ({ on }) =&gt; { … } } }
+
+// src/content/config/player.ts
+push: { delayMs: 220, speed: 4 /*, sound: 'sfx/push' */ },</code></pre>
+<p>Walk against it for <code>delayMs</code> and it slides one tile, unless a wall, the map edge or another object is behind it. Where it stops is saved. Only sprite objects standing on whole tiles can be pushed. In Tiled: the boolean property <code>pushable</code> (and <code>pushReset</code>) on the object. Example: the barrels in the town.</p>
+
+<h3 id="jumps">Jumps and ledges</h3>
+<pre><code>// src/content/terrain.ts
+gap:        { jump: true },      // hop over it from any side
+ledge_down: { jump: 'down' },    // only when moving down: a one-way ledge
+
+// src/content/config/player.ts
+jump: { delayMs: 120, ms: 280, height: 0.6 /*, sound: 'sfx/jump' */ },</code></pre>
+<p>Give a blocking tile (a hole, a cliff edge) one of these <a href="#terrain">terrains</a>. Walking against it makes the player hop to the tile behind it, when that tile is free. Jumps are one tile wide.</p>
+
+<h2 id="lights">Lights</h2>
+<pre><code>// any object or prop
+light: { radius: 4, color: '#ffa04a', flicker: 0.35, intensity: 1, offset: { x: 0, y: -4 } }
+
+// an item (content/items/lantern): around the player while it is carried and switched on
+defineItem({ light: { radius: 3.5, color: '#ffe0a0' }, /* … */ })
+
+// the player (content/config/player.ts): always
+light: { radius: 2 }</code></pre>
+<p>Lights lift the darkness in a soft circle and add a faint glow. They only show when the map is dark (night tint or <code>lighting</code>); by day nothing changes. Radius is in tiles, offset in pixels. Hidden NPCs give no light. Item lights: <a href="../gameplay/items.html#item-hooks">Items that do something while carried</a>.</p>
+</main>
+</div>
+</body>
+</html>

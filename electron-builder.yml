@@ -1,0 +1,25 @@
+# appId, productName, icon and the packaged name / version come from src/content/config/app.ts
+# (scripts/build.ts passes them as -c overrides).
+directories:
+  # electron-builder defaults to "build/" for icons etc., which is our output folder.
+  buildResources: electron/resources
+  output: build/electron/release
+files:
+  - package.json
+  - build/web/**
+  - build/electron/main/**
+  # Everything is bundled by Vite/esbuild, so no node_modules are needed at runtime.
+  - "!node_modules/**"
+# Pictures, sounds and videos stay as plain files next to app.asar (in app.asar.unpacked), not
+# inside it: a game update then changes only the files that changed (small Steam patches), and no
+# single archive grows to gigabytes. electron/main.ts serves them from there.
+asarUnpack:
+  - "build/web/**/*.{webp,avif,png,jpg,jpeg,gif,wav,ogg,mp3,m4a,opus,flac,mp4,webm}"
+linux:
+  target: AppImage
+  category: Game
+  syncDesktopName: true
+win:
+  target:
+    - nsis
+    - portable

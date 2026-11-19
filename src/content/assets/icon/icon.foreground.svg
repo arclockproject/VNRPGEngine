@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 432 432">
+  <title>Game icon (foreground)</title>
+  <!-- Android adaptive icon, front layer: 108 dp, the phone cuts it to its own shape. Keep the art
+       inside the middle 66 dp (264 of 432 here); the background is app.ts iconBackground or
+       icon.background.* -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f48fb1"/><stop offset="1" stop-color="#4fc3f7"/></linearGradient>
+  </defs>
+  <g transform="translate(216 220) scale(1.55)">
+    <polygon fill="url(#g)" points="0,-80 19,-26 76,-25 31,10 47,65 0,32 -47,65 -31,10 -76,-25 -19,-26"/>
+    <circle r="14" fill="#0d1117"/>
+  </g>
+</svg>

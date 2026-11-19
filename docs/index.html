@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Start here · Engine Guide</title>
+<link rel="stylesheet" href="assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="assets/search-index.gen.js" defer></script>
+<script src="assets/code.gen.js" defer></script>
+<script src="assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Engine Guide</h1>
+
+<p class="lead">How this game engine works and how to add content to it. React + Material UI for screens, PixiJS for the map, zustand for state. Runs as a desktop app (Electron), an Android app and in the browser, with keyboard, gamepad and touch.</p>
+
+<div class="cards">
+  <a href="recipes.html"><b>Recipes</b><span>Step by step: a talking NPC, a new map, a shop, a quest, a battle area…</span></a>
+  <a href="world/maps.html"><b>Maps &amp; the world</b><span>Tiled maps, doors, props, structures, time of day, lights</span></a>
+  <a href="story/events/scripts.html"><b>Events</b><span>Visual-novel scenes: dialogue, choices, portraits, effects</span></a>
+  <a href="story/vn.html"><b>Dialogue scripts (.vn)</b><span>Write scenes as plain text, with an editor extension</span></a>
+  <a href="gameplay/items.html"><b>Gameplay systems</b><span>Flags, items, money, quests, party, battles, achievements</span></a>
+  <a href="interface/translations.html"><b>Translations</b><span>How text is translated, adding a language, <code>pnpm lang</code></span></a>
+</div>
+
+<h2 id="first-steps">First steps after cloning</h2>
+<p>The game's name, ids and version are in one file, <code>src/content/config/app.ts</code>. Everything else (browser tab, desktop window, save folder, storage keys, save and backup formats, installers, the Android app) is filled in from it, so nothing outside <code>src/content</code> needs editing:</p>
+<pre><code>// src/content/config/app.ts
+export default {
+  id: 'mygame',                       // save folder, storage keys, build files
+  appId: 'com.mystudio.mygame',       // store id (Android, installers)
+  name: 'My Game',                    // what players see
+  description: 'A small adventure',
+  version: '1.0.0',                   // title screen, saves
+  build: 1,                           // goes up with every release (Android needs it)
+  saveFormat: 'mygame-save',          // only saves with this format load
+  backupFormat: 'mygame-backup',
+  iconBackground: '#0d1117',          // behind the Android adaptive icon
+  splashBackground: '#000000',        // every start-up screen until the game draws
+} satisfies AppConfig</code></pre>
+<ul>
+  <li>Set <code>id</code>, <code>appId</code> and the two formats <b>before your first release</b>. Changing them later starts the game without the players' saves, and stores and Android treat a new <code>appId</code> as a different app.</li>
+  <li><code>id</code>: letters, digits, <code>-</code> and <code>_</code>. <code>appId</code>: dot-separated parts that each start with a letter.</li>
+  <li><code>name</code> may have spaces and capitals. Installer file names keep only letters, digits, spaces and <code>. _ - ( )</code> ("Jack's Game" → "Jacks Game"); the window and the game show the real name.</li>
+  <li>Also give the title screen its name: <code>name</code> in <code>src/content/titles/default/index.ts</code> (and its translations in <code>src/content/lang/</code>), and the title screens' <code>alt</code> text.</li>
+  <li>The icons are files in <code>src/content/assets/icon/</code>: one per kind (tab and desktop, Android square, round, adaptive): see <a href="systems/tools.html#icons">Icons and splash</a>.</li>
+</ul>
+<p>Then run <code>pnpm setup:lfs</code> once (art and sound files).</p>
+
+<h2 id="setup">Setup and commands</h2>
+<pre><code class="language-sh">source ~/.nvm/nvm.sh &amp;&amp; nvm use 24     # node is only on the PATH after this
+pnpm install
+
+pnpm dev:browser        # dev server (reachable from other machines too)
+pnpm dev:electron       # the desktop app in dev mode
+pnpm test               # all tests (vitest)
+pnpm typecheck          # code generation + TypeScript (src and tools)
+pnpm lint               # Biome; pnpm lint:fix fixes what it can
+pnpm gen                # regenerate everything generated (registry, Tiled, Aseprite, .vn)
+pnpm lang               # translation status (pnpm lang --write adds missing keys)
+pnpm icons              # Android launcher icons from src/content/assets/icon (builds do it too)
+pnpm build              # everything: web, Linux, Windows, Android (installers in build/dist)
+pnpm build:web          # build/web (add --lite for the lite build)
+pnpm build:linux        # one target; also build:win, build:android (see Tools → Building)
+pnpm setup:lfs          # once per clone: Git LFS for art and sound files
+pnpm vn:extension       # editor extension for .vn files (build/vn-extension/*.vsix)
+pnpm guide              # refresh this guide's search and code colours</code></pre>
+<p>Open the game at the address the dev server prints. Press <code>`</code> for the <a href="systems/tools.html#dev-panel">dev panel</a>.</p>
+
+<h2 id="how-content-works">How content works</h2>
+<p>All game content lives in <code>src/content</code>. The engine lives in <code>src/core</code> and you normally don't need to touch it.</p>
+<ol>
+  <li><b>Make a folder with an <code>index.ts</code></b> (or <code>.tsx</code>) in the right place, e.g. <code>src/content/items/potion/index.ts</code>.</li>
+  <li><b>Export a definition</b> with the matching helper: <code>export default defineItem({ … })</code>. The helpers check your fields and give autocomplete.</li>
+  <li><b>Use its id anywhere</b>: <code>game.items.add('potion')</code>. The id is the folder name. It's typed: a typo is a TypeScript error.</li>
+</ol>
+<p>A code generator (<code>vite/registry.ts</code>) scans the folders and writes <code>src/generated/registry.gen.ts</code>. It runs on its own while the dev server is up, and in <code>pnpm typecheck</code> / <code>pnpm gen</code>. You never edit generated files.</p>
+<div class="tip">Data is written as TypeScript, not JSON, so you get autocomplete and checks everywhere. The <code>define…()</code> helpers do the same job as <code>satisfies Type</code>.</div>
+<h3>Names and groups</h3>
+<ul>
+  <li>Folder names: lowercase letters, digits and <code>_</code>, starting with a letter (<code>sudden_encounter_4</code>).</li>
+  <li>Folders starting with <code>_</code> are helpers, not entries (shared components, utilities).</li>
+  <li>Maps, events, windows, structures and props can be <b>grouped</b>: a folder <i>without</i> <code>index.ts</code> is a group. <code>events/anna/hello/index.ts</code> becomes the id <code>'anna/hello'</code>. Up to 3 group levels.</li>
+  <li>Inside an entry, subfolders (art, helpers) are never scanned for more entries.</li>
+</ul>
+<h3>Loaded up front vs. on demand</h3>
+<p>Maps, events, windows, minigames and structures load when first used (each is its own code chunk). Characters, props, items, quests, shops, enemies, skills, troops, achievements, journal entries, gallery pictures and title screens load at start, because the engine needs their data right away.</p>
+<div class="note">Files that load up front must <b>not</b> import <code>game</code> (<code>@/core/game</code>): that creates an import loop. Use the <code>game</code> passed into their hooks instead (<code>use: ({ game }) =&gt; …</code>).</div>
+
+<h2 id="layout">Project layout</h2>
+<table>
+  <tr><th>Folder (src/content/…)</th><th>What</th><th>Id example</th><th>Page</th></tr>
+  <tr><td><code>maps/&lt;group&gt;/&lt;name&gt;/</code></td><td>Places you walk around in</td><td><code>'countryside/town'</code></td><td><a href="world/maps.html">Maps</a></td></tr>
+  <tr><td><code>structures/&lt;name&gt;/</code></td><td>Small Tiled maps stamped into maps</td><td><code>'house'</code></td><td><a href="world/maps.html#structures">Maps</a></td></tr>
+  <tr><td><code>props/&lt;name&gt;/</code></td><td>Chests, barrels, trees…</td><td><code>'chest'</code></td><td><a href="world/maps.html#props">Maps</a></td></tr>
+  <tr><td><code>characters/&lt;name&gt;/</code></td><td>Name, portraits, map sprite, stats</td><td><code>'anna'</code></td><td><a href="world/characters.html">Characters</a></td></tr>
+  <tr><td><code>events/&lt;group&gt;/&lt;name&gt;/</code></td><td>Visual-novel scenes (<code>index.ts</code> or <code>index.vn</code>; or one file, <code>&lt;name&gt;.vn</code>)</td><td><code>'jack/hello'</code></td><td><a href="story/events/scripts.html">Events</a></td></tr>
+  <tr><td><code>items/&lt;name&gt;/</code></td><td>Inventory items</td><td><code>'apple'</code></td><td><a href="gameplay/items.html#items">Gameplay</a></td></tr>
+  <tr><td><code>quests/&lt;name&gt;/</code></td><td>Quests with steps</td><td><code>'jacks_letter'</code></td><td><a href="gameplay/progress.html#quests">Gameplay</a></td></tr>
+  <tr><td><code>shops/&lt;name&gt;/</code></td><td>What a shop sells and buys</td><td><code>'anna'</code></td><td><a href="gameplay/items.html#money">Gameplay</a></td></tr>
+  <tr><td><code>enemies/&lt;name&gt;/</code>, <code>skills/&lt;name&gt;/</code>, <code>troops/&lt;name&gt;/</code></td><td>Battles</td><td><code>'slime'</code>, <code>'fire'</code>, <code>'wolf_pack'</code></td><td><a href="gameplay/battles.html#battles">Gameplay</a></td></tr>
+  <tr><td><code>achievements/</code>, <code>codex/</code>, <code>gallery/</code></td><td>Achievements, journal entries, CG pictures</td><td><code>'builder'</code></td><td><a href="gameplay/progress.html#achievements">Gameplay</a></td></tr>
+  <tr><td><code>movies/</code></td><td>Videos that unlock in Extras → Movies</td><td><code>'opening'</code></td><td><a href="story/events/stage.html#video">Events</a></td></tr>
+  <tr><td><code>windows/&lt;name&gt;/</code></td><td>Inventory, shop, settings…</td><td><code>'inventory'</code></td><td><a href="interface/screens.html#windows">Screens</a></td></tr>
+  <tr><td><code>minigames/&lt;name&gt;/</code></td><td>Full-screen games (also the battle screen)</td><td><code>'dodge'</code></td><td><a href="interface/screens.html#minigames">Screens</a></td></tr>
+  <tr><td><code>titles/&lt;name&gt;/</code></td><td>Title screen variants, unlocked as the story goes on</td><td><code>'starlit'</code></td><td><a href="interface/screens.html#title-variants">Screens</a></td></tr>
+  <tr><td><code>boot/&lt;name&gt;.tsx</code></td><td>Notices and logos shown once when the game starts</td><td></td><td><a href="interface/screens.html#boot">Screens</a></td></tr>
+  <tr><td><code>lang/&lt;code&gt;/</code></td><td>Translations</td><td><code>'pl'</code></td><td><a href="interface/translations.html">Translations</a></td></tr>
+  <tr><td><code>audio/**</code></td><td>Sound files, any depth</td><td><code>'music/town'</code></td><td><a href="systems/audio.html">Audio</a></td></tr>
+  <tr><td><code>backgrounds/**</code></td><td>Scene backgrounds: a picture (or video) per id, or a folder with an .aseprite and <code>index.ts</code> for one with variants</td><td><code>'school/classroom'</code></td><td><a href="story/events/stage.html#background-library">Backgrounds</a></td></tr>
+  <tr><td><code>fonts/</code></td><td>Your font files, named in <code>index.ts</code>: choices in Settings, or fallbacks (emoji)</td><td><code>'pixel'</code></td><td><a href="interface/look.html#fonts">Fonts</a></td></tr>
+  <tr><td><code>save/</code></td><td>Saved data shape, new game, migrations; <code>persistent.ts</code>: your data kept across all saves</td><td></td><td><a href="systems/saves.html">Saves</a></td></tr>
+  <tr><td><code>tilesets/</code>, <code>sprites/</code>, <code>assets/</code></td><td>Shared art</td><td></td><td><a href="world/art.html">Art</a></td></tr>
+</table>
+<p>Files at the top of <code>src/content</code>: lists other content refers to by id, and files that grow as the game grows:</p>
+<table>
+  <tr><th>File</th><th>What</th></tr>
+  <tr><td><code>start.ts</code></td><td>What happens when the game starts (boot screens, title screen, main menu)</td></tr>
+  <tr><td><code>settings.ts</code></td><td>The game's own settings next to the engine's (<a href="interface/settings.html#own-settings">Settings</a>)</td></tr>
+  <tr><td><code>flags.ts</code></td><td>Story flags and their start values</td></tr>
+  <tr><td><code>chapters.ts</code></td><td>Chapters, how they are announced</td></tr>
+  <tr><td><code>stats.ts</code>, <code>statuses.ts</code>, <code>battle.ts</code></td><td>Party stats, elements, levels; statuses (poison, sleep, haste…); battle music, backgrounds, formulas and losing</td></tr>
+  <tr><td><code>scenes.ts</code></td><td>How scenes behave: line styles, moves, transitions, voices, reading comfort, the chat box layout and side image, the toolbar, the framed picture (<code>inset</code>), Back, the music room</td></tr>
+  <tr><td><code>travel.ts</code>, <code>recipes.ts</code></td><td>Fast-travel places; crafting recipes</td></tr>
+  <tr><td><code>weather.ts</code>, <code>ambient.ts</code>, <code>terrain.ts</code>, <code>music.ts</code>, <code>emotes.ts</code></td><td>Weather kinds and their sounds; footsteps per ground; music loop points; emote balloons</td></tr>
+  <tr><td><code>credits.ts</code></td><td>The names listed by the <code>credits</code> window</td></tr>
+  <tr><td><code>look/</code> (a folder)</td><td>How the whole UI looks, sounds and behaves: colours, text, frames, buttons, named parts, UI sounds, MUI defaults. See <a href="interface/look.html">The game's look</a>.</td></tr>
+</table>
+<p><code>src/content/config/</code>: settings you pick once and rarely touch again:</p>
+<table>
+  <tr><th>File</th><th>What</th></tr>
+  <tr><td><code>app.ts</code></td><td>The game's name, ids, version, save formats, icon and splash colours (<a href="#first-steps">First steps</a>)</td></tr>
+  <tr><td><code>mode.ts</code></td><td>Visual novel only, or the game with maps</td></tr>
+  <tr><td><code>newgameplus.ts</code>, <code>difficulty.ts</code>, <code>gameover.ts</code></td><td>New Game+; difficulty levels; what losing does</td></tr>
+  <tr><td><code>input.ts</code></td><td>Actions and their keys / buttons, touch buttons</td></tr>
+  <tr><td><code>player.ts</code>, <code>money.ts</code>, <code>clock.ts</code>, <code>timers.ts</code></td><td>Player speed, size, sprite; currency; day / night colours and calendar; on-screen timers</td></tr>
+  <tr><td><code>screen.ts</code></td><td>Screen ratios, landscape only on phones, map zoom, scene (stage) sizes, minimap, toasts, timings</td></tr>
+  <tr><td><code>flowchart.ts</code></td><td>The flowchart's sizes, lines and wording (VN mode)</td></tr>
+  <tr><td><code>media.ts</code>, <code>protect.ts</code>, <code>security.ts</code></td><td>How pictures and sounds are converted in builds (see <a href="world/art.html#big-games">Big games</a>); the media lock; the built game's Content-Security-Policy</td></tr>
+</table>
+<p><code>src/content/ui/</code>: how the engine's screens are laid out (the chat box, choices, windows, toasts, the log…). See <a href="interface/screens.html#ui-files">UI files</a>.</p>
+
+<h2 id="game-object">The game object</h2>
+<p>Content talks to the engine through one object. Everything on it is typed by your content.</p>
+<pre><code>import { game } from '@/core/game'      // or the `game` handed to hooks
+
+game.maps.go('countryside/forest', { spawn: 'from_town' })
+await game.events.start('jack/hello')
+const result = await game.minigames.start('rock_paper_scissors')
+game.windows.open('inventory')
+game.items.add('apple', 2, { notify: true })
+game.flags.set('met_anna', true)
+game.quests.start('jacks_letter')
+game.toast(game.t('Saved!'))</code></pre>
+<table>
+  <tr><th>Part</th><th>Does</th></tr>
+  <tr><td><code>maps</code>, <code>structures</code>, <code>props</code>, <code>clock</code></td><td><a href="world/maps.html">The world</a></td></tr>
+  <tr><td><code>events</code>, <code>minigames</code>, <code>windows</code>, <code>title</code></td><td><a href="story/events/scripts.html">Scenes</a> and <a href="interface/screens.html">screens</a></td></tr>
+  <tr><td><code>flags</code>, <code>items</code>, <code>money</code>, <code>shops</code>, <code>quests</code>, <code>party</code>, <code>battles</code>, <code>relationships</code>, <code>achievements</code>, <code>codex</code>, <code>extras</code></td><td><a href="gameplay/items.html">Gameplay</a></td></tr>
+  <tr><td><code>characters</code></td><td><a href="world/characters.html#names">Names that change</a></td></tr>
+  <tr><td><code>state</code>, <code>save</code>, <code>session</code>, <code>dialog</code></td><td><a href="systems/saves.html">Saved data</a>, <a href="systems/saves.html#leaving">leaving the game, asking a question</a></td></tr>
+  <tr><td><code>audio</code>, <code>input</code>, <code>lang</code>, <code>t</code>, <code>toast</code></td><td><a href="systems/audio.html">Audio</a>, <a href="interface/input.html#input">input</a>, <a href="interface/translations.html">translations</a></td></tr>
+</table>
+<h3>The screen stack</h3>
+<p>Screens stack as <b>map → event → minigame → windows</b>, with toasts on top. Only the top one gets input: while a window is open, the map doesn't move. Windows stack among themselves: opening one that is already open brings it to the front.</p>
+
+<h2 id="conventions">Conventions</h2>
+<ul>
+  <li>Code style is enforced by Biome (single quotes, no semicolons, 2 spaces, 100 columns). The editor formats on save with the recommended Biome extension.</li>
+  <li>State lives in a few grouped zustand stores (with immer). Content reads it through <code>game.*</code> and React hooks like <code>useFlag</code>, <code>useInventory</code>, <code>useGameData</code>.</li>
+  <li>Things that change every frame (movement, tweens, typing text) are written straight to the screen, not through React state.</li>
+  <li>Hooks that may be async are typed as returning <code>void</code> on purpose (the engine awaits them). This avoids circular types between maps and events that refer to each other.</li>
+</ul>
+</main>
+</div>
+</body>
+</html>

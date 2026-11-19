@@ -1,0 +1,12 @@
+# The bad ending (visual novel demo): you took the bus. A route written as a script: the same as
+# an index.ts route (docs/story/routes.html), compiled to index.gen.ts. Lines: event <id> [as <box>],
+# if / elif / else with flag('id') or check('label', condition), movie <id>, route <id>, ending <id>, end.
+title Bad end
+description You left town.
+color #ff8a80
+# No "as <box>": the box is named after the last part of the id (alone).
+event vn_demo/alone
+# The driver (a Spine character) has a word before the end.
+event vn_demo/driver
+# The story ends with this ending (src/content/endings/bad_end): listed in Extras once reached.
+ending bad_end

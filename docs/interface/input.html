@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Input · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Input</h1>
+<p class="lead">Keyboard, gamepad and touch: actions and bindings, reacting to them, moving through windows, the pause menu and on-screen prompts.</p>
+<h2 id="input">Actions and keys</h2>
+<p>Keyboard, gamepad (incl. Steam Deck) and touch all produce the same <b>actions</b>. Content reacts to actions, never to raw keys.</p>
+<pre><code>// src/content/config/input.ts
+export default defineInput({
+  actions: {
+    up: { keys: ['ArrowUp', 'KeyW'], buttons: [GP.DpadUp], stick: 'up' },
+    confirm: { keys: ['Enter', 'Space', 'KeyF'], buttons: [GP.A] },
+    cancel: { keys: ['Escape', 'Backspace'], buttons: [GP.B] },
+    menu: { keys: ['Escape'], buttons: [GP.Start] },          // Escape is cancel too: see Pause menu
+    inventory: { keys: ['KeyE'], buttons: [GP.X], vnMode: false }, // not in VN-only mode
+    // padLocked / padResetInMenus: see Touch, gamepads and prompts below
+    map_marker: { keys: ['KeyM'], buttons: [GP.LeftStick] },  // a new action: now typed everywhere
+  },
+  backButton: ['cancel', 'menu'],                           // Android's Back: the first that does something
+  touchButtons: [
+    { action: 'confirm', label: 'A', layers: ['map'] },     // only over the map
+    { action: 'cancel', label: 'B', layers: ['map'] },
+    { action: 'inventory', label: 'Bag', layers: ['map'] },
+    // place: 'top-right' pins a button to the top right corner instead
+  ],
+})</code></pre>
+<ul>
+  <li>Keys are <code>KeyboardEvent.code</code> names (<code>KeyW</code>, <code>Space</code>, <code>ArrowUp</code>): the position on the keyboard, so WASD works on any layout.</li>
+  <li>Required actions: <code>up</code>, <code>down</code>, <code>left</code>, <code>right</code>, <code>confirm</code>, <code>cancel</code>, <code>menu</code>. The engine also reacts to <code>inventory</code>, <code>skip</code>, <code>back</code>, <code>auto</code>, <code>log</code>, <code>hide</code> (scenes), <code>tabPrev</code> / <code>tabNext</code> (tabs, title switcher, pages), <code>quickSave</code>, <code>quickLoad</code>, <code>screenshot</code> and <code>fullscreen</code>. Leaving one out of the file is allowed: it then has no key or button.</li>
+  <li><code>vnMode: false</code>: the action is off in VN-only mode (<code>config/mode.ts</code>): it never fires and isn't listed in Settings → Controls.</li>
+  <li><code>src/content/config/input.test.ts</code> checks that every action has a key and a controller button (a short keyboard-only list), and that no key or button does two things unless listed as on purpose. Change its lists when you change the bindings on purpose.</li>
+  <li>Gamepad buttons: <code>GP.A</code>, <code>B</code>, <code>X</code>, <code>Y</code>, <code>LB</code>, <code>RB</code>, <code>LT</code>, <code>RT</code>, <code>Back</code>, <code>Start</code>, <code>LeftStick</code>, <code>RightStick</code> and the four <code>Dpad…</code> (Xbox names; other pads use the same positions).</li>
+  <li>A new action needs a display name in <code>windows/settings/Controls.tsx</code> (a type error reminds you).</li>
+</ul>
+<h3 id="defaults">Default controls</h3>
+<table>
+  <tr><th>Action</th><th>Keyboard</th><th>Controller</th></tr>
+  <tr><td>Move / choose</td><td>Arrows, WASD</td><td>D-pad, left stick</td></tr>
+  <tr><td>Confirm / cancel</td><td>Enter, Space, F / Escape, Backspace</td><td>A / B (Nintendo: see Confirm with)</td></tr>
+  <tr><td>Pause menu</td><td>Escape</td><td>Start</td></tr>
+  <tr><td>Inventory (not in VN-only mode)</td><td>E</td><td>X</td></tr>
+  <tr><td>Skip (hold) / back a line</td><td>Ctrl / Page Up</td><td>RT / LB</td></tr>
+  <tr><td>Auto-play / log / hide the text box</td><td>T / L / H</td><td>RB / View / Y</td></tr>
+  <tr><td>Previous / next tab</td><td>Q / R</td><td>LB / RB</td></tr>
+  <tr><td>Quick save / quick load</td><td>F5 / F9</td><td>none (players can add one)</td></tr>
+  <tr><td>Screenshot / fullscreen</td><td>F8 / F11</td><td>(the console's own screenshot button)</td></tr>
+</table>
+
+<h3 id="handling">Reacting to actions</h3>
+<pre><code>// React (any screen): active on the screen the component belongs to
+useAction('map_marker', () =&gt; placeMarker())
+useAction('cancel', () =&gt; { if (!submenu) return false; closeSubmenu() })   // false = pass it on
+useAction('inventory', toggle, { layers: ['map', 'windows'] })                // also while windows are open
+const skipping = useHeld('skip')                                              // held down right now
+
+// Game loops and scripts
+game.input.isDown('confirm')
+game.input.move('map')        // { x, y } from arrows / stick / joystick, -1..1</code></pre>
+<ul>
+  <li>Only the top screen gets actions (title, windows, minigame, event, map, from the top). Inside windows, only the front window's handlers.</li>
+  <li>The newest handler wins; returning <code>false</code> passes the action to the next one, then to the engine default (cancel closes, arrows move focus).</li>
+  <li>Keys the game handles don't reach focused MUI widgets (so a slider doesn't also move); others pass through (typing in a text field).</li>
+  <li>Directions repeat when held on a gamepad or touch (after 400 ms, then every 120 ms).</li>
+</ul>
+<h3 id="navigation">Navigation in windows</h3>
+<ul>
+  <li>When a window opens it focuses its first control (not on touch). Up/down/left/right move between buttons, switches and sliders in the window.</li>
+  <li>A slider is one target: its whole track counts, so pressing down from a button reaches the slider below it.</li>
+  <li>An open dropdown (MUI Select, Menu) takes pad input: up/down move through its options, confirm picks, cancel (Esc, pad B) closes just the dropdown. While it is open no other game action fires (Esc does not open the menu).</li>
+  <li>Custom boxes can name their navigation box with <code>data-nav-rect</code>, e.g. <code>&lt;div data-nav-rect&gt;</code> around a group of controls.</li>
+  <li>To send a direction somewhere on purpose, put <code>data-nav-up</code> / <code>-down</code> / <code>-left</code> / <code>-right</code> with a CSS selector on the control or on a box around it: <code>&lt;Box data-nav-down="[data-mute]"&gt;</code>. It wins over the position-based pick when it matches a visible control. Use it for a button left or right of a slider (left/right there only change the value), as in Settings → Voices.</li>
+</ul>
+<h3 id="pause-menu">Pause menu</h3>
+<p>The <b>Menu</b> action (Escape, Start on a pad, or the ☰ button) opens the pause menu, the window <code>windows/menu</code>: a grid of buttons (arrows or d-pad move between them) that reaches every window: Inventory, Quests, Party, Journal, Save, Load, Settings, Log (during a scene), I'm stuck (on a map), Title and Quit (desktop app). Escape also closes the front window (it is <code>cancel</code> too). One key or pad button press goes to one action, the first one that takes it, so Escape on a window closes only that window, and B that closes a window does not also hide the text box under it. The Menu button also closes the front window (unless a handler takes it first), so the pad button that opened the menu backs out of it one window at a time, as Escape does. Inventory also has its own key, <b>E</b> (X on a pad), next to WASD; confirm is <b>F</b>, Enter or Space. Tabs in Journal, Extras and Settings switch with <b>Q / R</b> (LB / RB on a pad). Those are the actions <code>tabPrev</code> and <code>tabNext</code>; any window with tabs can use <code>useTabs(setTab, [...])</code>.</p>
+<h3 id="click-outside">Clicking outside a window</h3>
+<p>A click or tap outside every window closes the top one (one at a time) and does nothing else: while a window is open, nothing under it can be clicked (the map, a scene and its toolbar, the title menu). Clicking inside another window brings it to the front instead. Windows marked <code>closable: false</code> stay open, and still block the click. The ☰ button stays usable.</p>
+<h3 id="devices">Touch, gamepads and prompts</h3>
+<ul>
+  <li>Touch: a joystick plus <code>touchButtons</code> appear on touch screens while the map or a scene is on top. Buttons sit bottom right (the first is largest); <code>place: 'top-right'</code> pins one to the corner; <code>layers: ['map']</code> or <code>['event']</code> limits where it shows. In scenes a tap continues, so A/B are only needed on the map. A tap only continues a line if it started on the scene while nothing was above it: taps on a window, on the ☰ button, or that close a window never move the dialogue on. Where the joystick and buttons sit, their sizes and symbols: <code>src/content/ui/TouchControls.tsx</code>.</li>
+  <li>The ☰ pause menu button is its own file, <code>src/content/ui/MenuButton.tsx</code> (restyle it there). It shows on every device (PC, Steam Deck, phone, browser) during play on every layer (map, scenes, minigames, over windows), never on the title, and opens or closes the <code>menu</code> window.</li>
+  <li>The game never acts like a web page: text can't be selected (except in inputs), taps don't flash, and the page can't be zoomed (pinch, double-tap, Ctrl + wheel, Ctrl + plus/minus) in the browser, Electron or Android. The browser's right-click / long-press menu (save image, view source...) never opens, but the game's own <code>onContextMenu</code> handlers still run. An element that needs its own touch gestures sets <code>touchAction: 'none'</code>.</li>
+  <li>Gamepads are detected by type (Xbox, PlayStation, Nintendo, Steam Deck) so prompts show the right button names. Nintendo controllers confirm with the right face button (A): Settings → Controls <b>Confirm with</b> (Automatic, Bottom button, Right button) swaps the two buttons, and every prompt follows. The names and face-button colours per controller, and the names of keys (Esc, ↑, Ctrl…), are in <code>src/content/look/glyphs.ts</code>; a button it leaves out shows as <code>#n</code>, a key by its code.</li>
+  <li>The mouse wheel in scenes (down = next line, up = the log): what it does and how small a movement is ignored, how fast steps come: <code>wheel</code> in <code>src/content/scenes.ts</code>.</li>
+  <li>The mouse cursor hides at once while a gamepad is in use (never for touch) and comes back as soon as the mouse moves. Separately, Settings → General → <b>Hide idle mouse</b> (<code>settings.cursorAutoHide</code>: Never, 10 s, 5 s) hides it after the mouse sits still that long; the choices and default are <code>cursorAutoHide</code> / <code>defaultCursorAutoHide</code> in <code>src/content/config/screen.ts</code> (seconds, 0 = never).</li>
+  <li>Players change keys and buttons in Settings → Controls (saved per device; the tab is hidden on touch). In code: <code>game.input.setBinding</code>, <code>resetBindings</code>, <code>capture()</code>.</li>
+  <li>Settings → Controls is a picture of the device in use: <code>windows/settings/Keyboard.tsx</code> (a key table, drawn) or <code>Controller.tsx</code> (the art <code>controller.svg</code> plus a table of where each button sits on it). Every key / button on it is a button: press one, and the panel under the picture lists every action; turn on the ones that key / button should do (a key may do two, like Escape = cancel + menu). Pointing at an action lights its keys / buttons. An action left with none shows as "Not set". <b>Confirm with</b> only shows while a controller is in use. Swap the art or move the buttons in those files.</li>
+  <li>Controller safety, in <code>config/input.ts</code>: <code>padLocked: true</code> (the menu) = its controller button can't be changed or taken by another action, so Settings can always be reached. <code>padResetInMenus: true</code> (moving, confirm, cancel) = while a window in <code>menuWindows</code> (pause menu, Settings, and any dialog over them) is open, these use the buttons from the file, whatever the player set; elsewhere the player's own. So no rebinding can lock a controller player out.</li>
+</ul>
+
+</main>
+</div>
+</body>
+</html>

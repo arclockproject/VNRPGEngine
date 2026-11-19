@@ -1,0 +1,6 @@
+# Visual novel demo: the last box of the common route. The route asks: stay or go.
+title The last bus
+
+# The same place in the evening: the variant "evening" (the "+evening" layer turned on).
+bg town/bus_stop evening with wipeLeft 800
+> The last bus of the day pulls in.

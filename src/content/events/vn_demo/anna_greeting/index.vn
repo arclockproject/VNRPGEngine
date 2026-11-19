@@ -1,0 +1,8 @@
+# Visual novel demo: only played when you waved at Anna (vn_met_anna).
+title Anna again
+
+bg #1d2a24
+show anna
+anna: You're still here! Want to see the pond later?
+> You say you might.
+hide

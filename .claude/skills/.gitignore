@@ -1,0 +1,28 @@
+# pnpm
+/pixijs
+/pixijs-accessibility
+/pixijs-application
+/pixijs-assets
+/pixijs-color
+/pixijs-core-concepts
+/pixijs-create
+/pixijs-custom-rendering
+/pixijs-environments
+/pixijs-events
+/pixijs-filters
+/pixijs-html-source
+/pixijs-math
+/pixijs-migration-v8
+/pixijs-performance
+/pixijs-scene-container
+/pixijs-scene-core-concepts
+/pixijs-scene-dom-container
+/pixijs-scene-gif
+/pixijs-scene-graphics
+/pixijs-scene-mesh
+/pixijs-scene-particle-container
+/pixijs-scene-sprite
+/pixijs-scene-text
+/pixijs-ticker
+/pnpm-pixi.js-pixijs-blend-modes
+# pnpm end

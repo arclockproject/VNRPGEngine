@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Endings &amp; extras · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Endings &amp; extras</h1>
+<p class="lead">What the player unlocks for good: the endings list and completion, the gallery, scene replay, movies and the music room.</p>
+<h2 id="completion">Endings list and completion</h2>
+<p>Extras has an <b>Endings</b> tab (reached ones with their description, the others with their <code>hint</code>; secret ones only once reached) and shows “Found 42%” at the top.</p>
+<pre><code>// src/content/scenes.ts
+completion: { show: true, count: [&#39;endings&#39;, &#39;gallery&#39;, &#39;movies&#39;, &#39;music&#39;, &#39;achievements&#39;] },
+
+game.extras.completion()   // { percent, found, total, parts: { endings: { found, total }, … } }</code></pre>
+
+<h2 id="extras">Extras: gallery, scene replay, movies, music room</h2>
+<pre><code>// src/content/gallery/hill/index.ts
+import image from './image.png'
+export default defineGallery({ title: 'The hill', image /*, thumbnail */ }) // thumbnail: made for you
+
+cg('hill') … cg(null)                  // in an event: show it, and unlock it in the gallery
+cg('pond_memory', 'full_moon')         // a variant of a layered CG (art → layered CGs)
+
+// Replayable: listed in Extras → Scenes once the player has finished it (also when run inside another event with event())
+export default defineEvent({ title: 'The pond', replay: 'The pond', run: async (ctx) =&gt; { … } })
+
+// With a picture on its card (next to the event's index.ts):
+import preview from './preview.png'
+export default defineEvent({ title: 'The pond', replay: { title: 'The pond', preview }, run: … })</code></pre>
+<ul>
+  <li><b>Voices</b>: the lines the player starred in the log (<a href="../story/events/scripts.html#favourite-voices">Favourite voices</a>).</li>
+  <li><b>Movies</b>: every movie in <code>src/content/movies/</code> (see <a href="../story/events/stage.html#video">Video</a>) is a tile; it unlocks when <code>movie('id')</code> plays it (also <code>game.extras.unlockMovie(id)</code>). The tile shows its <code>poster</code>, or the first frame of the video. Picking one closes Extras, plays the movie like in a scene (music fades out, black screen, skippable), then opens Extras again on the Movies tab. It runs through the event <code>src/content/events/extras/movie</code> (change it to add a fade or a title card; keep its name), as a scene replay: the game is put back afterwards, and a movie shown through "Show all" stays locked. <code>game.minigames.open('extras', { tab: 'movies' })</code> opens Extras on a tab.</li>
+  <li><b>Music room</b>: the Music tab lists the tracks from <code>src/content/scenes.ts</code> (<code>musicRoom</code>); a track appears once it has started playing in the game. See <a href="../systems/audio.html#more">Audio</a>. Above the list sits the <b>player</b> (<code>src/content/ui/MusicPlayer.tsx</code>): what plays, a seek bar with the time, previous / play-pause / stop / next, repeat (off, all, this track) and shuffle. Picking a track plays it, picking it again pauses. Repeat <i>this track</i> uses the track's loop points (<code>src/content/music.ts</code>); <i>all</i> goes on to the next unlocked track and wraps; <i>off</i> stops at the end. Previous goes back to the start after 3 s, else to the track before. Keys / pad: arrows or d-pad reach every button and the bar (left / right seek), Y or H plays / pauses anywhere on the tab. The game's music comes back when the tab closes. From code: <code>game.extras.playMusic(id)</code> (or <code>null</code>), or <code>musicPlayer</code> / <code>useMusicPlayer()</code> / <code>useMusicPosition()</code> from <code>@/core/audio/musicPlayer</code>.</li>
+  <li><b>Extras is a full-screen minigame</b> (<code>src/content/minigames/extras</code>), opened with <code>game.minigames.open('extras')</code> (a UI minigame: never part of a mid-scene save). <code>{ tab: 'voices' }</code> opens it on that tab; every other tab is still there to switch to (a tab the game does not have opens the first one). The title menu has <i>Favourite voices</i> once a line is starred, and the scene toolbar's Voices button opens it the same way. While it is open a running scene waits under it (no auto-play, no skipping); cancel (Esc / B), menu (Start) or ✕ closes it, and the pause menu never opens over it.</li>
+  <li>Its tabs: Gallery, Scenes, Movies, Music, Voices (when favourite voices are on), Endings (when the game has endings) and Achievements (not in <a href="../story/routes.html">visual novel mode</a>) tabs (they scroll sideways on a phone). The title menu shows "Extras" once anything is unlocked. Gallery pictures open full screen and zoomable (see <a href="../interface/settings.html#image-viewer">Image viewer</a>).</li>
+  <li>Thumbnails for the gallery grid are made automatically from every PNG/JPG/WebP/AVIF and layered CG inside <code>src/content/gallery/</code> (size in <code>src/content/config/media.ts</code>). Set <code>thumbnail</code> to use your own, or for pictures kept elsewhere.</li>
+  <li><b>Variants</b>: each one unlocks when shown. The tile shows how many are unlocked (2/4); the viewer has a dot per variant (empty = not seen yet). Switch with left/right (when not zoomed in; zoomed in they pan), the shoulder buttons / tab keys (any zoom, to compare the same spot), a swipe, or by tapping a dot.</li>
+  <li><b>Scene cards</b> show the event's <code>preview</code>, or without one the first CG or background it shows. Name the file <code>preview.png</code> (or .jpg/.webp/.avif) and the build makes a small thumbnail of it. Locked scenes are a "?" card with no picture (no spoilers).</li>
+  <li><b>Show all (spoilers)</b>: a button on every tab that still has something locked (Gallery, Scenes, Movies, Music, Endings). After a warning it shows everything until Extras is closed. Locked scenes can then be played. Nothing is saved: watching a locked scene earns nothing (no scene, picture, read line, achievement or title screen; the across-saves data is put back afterwards).</li>
+  <li>A replay plays over the title screen on black. Saving is off, and the game state (flags, items, relationships…) is put back afterwards.</li>
+  <li>Keep replayable events to the scene itself: <code>maps.go</code>, NPC walks and other map changes are not undone.</li>
+  <li>Changing it (<code>src/content/minigames/extras/index.tsx</code>): every tab is built from the same parts: <code>TabFrame</code> ("Nothing here yet." and Show all), <code>Tile</code> (a card of the grid tabs: picture or "?", title or "???") and <code>NumberedRow</code> (the "01" rows of Music and Endings). Restyle one of those and every tab follows; a new tab reuses them.</li>
+  <li><code>game.extras</code>: <code>images(revealAll?)</code>, <code>scenes()</code>, <code>unlockImage(id, variant?)</code>, <code>imageUnlocked(id, variant?)</code>, <code>unlockScene(id)</code>, <code>replay(id)</code>, <code>anyUnlocked()</code>.</li>
+</ul>
+</main>
+</div>
+</body>
+</html>

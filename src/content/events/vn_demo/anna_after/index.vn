@@ -1,0 +1,11 @@
+# Visual novel demo: Anna's after story (src/content/routes/anna_after). An after story starts
+# from a fresh game, so it sets what it needs itself.
+title One year later
+
+bg #1d2a2a
+love anna +10
+> A year has passed since you let the bus go.
+show anna
+anna: Same bench, same pond.
+anna: I'm still glad you stayed.
+hide anna

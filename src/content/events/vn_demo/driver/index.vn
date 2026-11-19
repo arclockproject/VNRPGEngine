@@ -1,0 +1,14 @@
+# Visual novel demo: the bad route's last scene. The bus driver is a Spine portrait
+# (src/content/characters/driver): each pose is an animation, his mouth moves while he talks,
+# he blinks by himself, and his hat is a part (a Spine skin).
+title The driver
+
+bg bus_inside
+show driver at right
+driver: Last stop. Everybody out.
+driver:surprised: Oh! You're still here?
+# A part: another skin on top. The pose keeps it until a pose sets its own (wave: the cap).
+$ show('driver', { parts: { hat: 'party' } })
+driver:happy: It's my last shift today. Like the hat?
+driver:wave: Take care out there.
+hide driver

@@ -1,0 +1,9 @@
+# Visual novel demo: Anna's route, first box (you stayed).
+title A walk to the pond
+
+bg #1d2a2a
+> You let the bus go without you.
+show anna
+anna: This is my favourite place in town.
+love anna +5
+anna: I'm glad you stayed.

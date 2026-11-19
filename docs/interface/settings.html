@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings &amp; screen · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Settings &amp; screen</h1>
+<p class="lead">The player's Settings window, the screen ratio and its bars, and the image viewer.</p>
+<h2 id="settings">Settings</h2>
+<p>Per device, separate from save slots, in the <code>settings</code> window, grouped in tabs: <b>General</b> (language, screen ratio, hide idle mouse, fullscreen, dev panel, erase all data), <b>Text</b> (text size, font, text box opacity, text speed, auto-play pause, skip options, reduce shaking and flashes, read text aloud), <b>Audio</b> (master/music/sfx/voice/movies, voices play to the end, lower music under voices, voice language when the game has more than one), <b>Voices</b> (a portrait per voiced character; pick one, then its volume slider and mute button; below them the <a href="../systems/audio.html#system-voice">system voice</a> picker when a character has system voice clips; hidden when no character has a voice, see <a href="../story/events/scripts.html#voices">Voices</a>) and <b>Controls</b> (a picture of the keyboard or controller: press a key / button, then pick what it does; see <a href="input.html#devices">Input</a>). General also has Vibration, shown only while the player uses a controller or a touch screen that can buzz (keyboards do not vibrate). Controls is hidden while the player uses touch, and comes back on the first key or button press. See <a href="../systems/saves.html#settings">Saves &amp; settings</a>.</p>
+
+<p>The choices and defaults for the reading options are in <code>src/content/scenes.ts</code>:</p>
+<pre><code>text: {
+  sizes: [0.85, 1, 1.15, 1.3, 1.5],        // Text size
+  defaultSize: 1,
+  fonts: {                                  // Font: the first is the default
+    game: { name: 'Game font' },
+    sans: { name: 'Plain (easy to read)', family: 'Verdana, sans-serif' },
+  },
+  defaultBoxOpacity: 1,
+  logLines: 200,
+},
+comfort: { reduceMotionByDefault: 'system', reducedFlash: 0.25 },
+rumble: { onShake: true, strength: 0.6 },</code></pre>
+<ul>
+  <li><b>Font</b> changes the whole UI. Your own font files go in <code>src/content/fonts/</code> and join this list by themselves (unless they are <code>fallback</code> or <code>internal</code>); <code>playerPicksFont: false</code> in <code>scenes.ts</code> <code>text</code> hides the row: see <a href="look.html#fonts">Fonts</a>.</li>
+  <li><b>Read text aloud</b> uses the device's speech: lines without a voice clip, choices, and the focused button. The switch only shows where the device can speak (not in the Android app yet).</li>
+  <li><b>Vibration</b>: <code>game.input.rumble({ strength: 0.8, duration: 200 })</code> shakes the controller in use, or buzzes a phone.</li>
+</ul>
+<h3 id="own-settings">Your own settings</h3>
+<p>The game's own settings go in <code>src/content/settings.ts</code>, each with its default (its type comes from it). They are kept per device like the engine's, erased with <b>Erase all data</b>, and a setting added later gets its default for players who already have settings saved.</p>
+<pre><code>// src/content/settings.ts
+export default defineSettings({
+  bigCursor: false,
+  hints: 'on' as 'on' | 'off',          // a few choices
+  brightness: 0.5,
+})
+
+game.settings.get('hints')              // 'on'
+game.settings.set('hints', 'off')
+const hints = useGameSetting('hints')   // React (from '@/core/managers/gameSettings')</code></pre>
+<p>A row for one in the Settings window (<code>src/content/windows/settings/</code>), with the helpers from <code>parts.tsx</code>:</p>
+<pre><code>&lt;SettingSwitch gameSetting="bigCursor" label={t('Big cursor')} /&gt;
+&lt;SettingSelect label={t('Hints')} value={useGameSetting('hints')} onChange={putGame('hints')}
+  options={[{ value: 'on', label: t('On') }, { value: 'off', label: t('Off') }]} /&gt;
+&lt;SettingSlider label={t('Brightness')} value={useGameSetting('brightness')} onChange={putGame('brightness')} /&gt;  // 0..1, shown as %</code></pre>
+
+<h2 id="screen">Screen ratio</h2>
+<p>The game runs in one box, <code>#game-screen</code>, 16:9 by default, with pure black bars around it. Players pick 16:9, 16:10, 4:3, 21:9 or "Fill screen" in Settings → General (<code>settings.screenRatio</code>).</p>
+<p>The choices, default, bar colour, "short screen" height, the <a href="../world/maps.html#zoom">map zoom</a> and the image viewer's zoom limit and speeds are set in <code>src/content/config/screen.ts</code>:</p>
+<pre><code>export default defineScreen({
+  ratios: ['16:9', '16:10', '4:3', '21:9', 'fill'],
+  defaultRatio: '16:9',
+  barColor: '#000',
+  shortHeight: 520,
+  landscapeOnly: true,             // phones held upright see "turn your device" instead of the game
+  cursorAutoHide: [0, 10, 5],      // seconds, 0 = never
+  defaultCursorAutoHide: 0,
+  map: { tilesHigh: 12, textHeight: 720, pixelPerfect: false },   // see Maps → Zoom
+  imageViewer: { maxZoom: 4, zoomPerSecond: 2.5, panSpeed: 900, doubleTapZoom: 2.5, background: '#000' },
+})</code></pre>
+<ul>
+  <li>The game is landscape only on phones: the Android app turns between the two sideways positions and never upright (<code>screenOrientation="sensorLandscape"</code> in <code>AndroidManifest.xml</code>); in a browser an upright phone shows a “turn your device” screen (<code>landscapeOnly</code>).</li>
+  <li>Size UI to the box, not the browser window: <code>100cqw</code> / <code>100cqh</code> instead of <code>100vw</code> / <code>100dvh</code>.</li>
+  <li>For compact layouts on short screens use the <code>SHORT_SCREEN</code> sx key (game screen 520px tall or less), not a height <code>@media</code> query.</li>
+  <li>A full-screen overlay outside the layers? Portal it into <code>gameScreen()</code> (both from <code>src/core/layers/screen.ts</code>).</li>
+</ul>
+<pre><code>sx={{ maxHeight: 'calc(100cqh - 32px)', [SHORT_SCREEN]: { p: 0.5 } }}</code></pre>
+
+<h2 id="image-viewer">Image viewer</h2>
+<p><code>&lt;ImageViewer pictures start? caption onClose /&gt;</code> (<code>src/core/ui/ImageViewer.tsx</code>) shows pictures over the whole game screen with zoom and pan. The Extras gallery uses it. Each picture is <code>{ layers: [url, …], locked? }</code> (layers stack, bottom first); with more than one, dots show which is on screen.</p>
+<ul>
+  <li>Mouse: scroll to zoom, drag to pan, double-click to zoom in/out. Touch: pinch, drag, double-tap.</li>
+  <li>Pad / keyboard: hold A (confirm) to zoom in up to <code>maxZoom</code>, d-pad, stick or arrows to pan, hold B (cancel) to zoom back out. Once fully out, release and press B again to close.</li>
+  <li>Switching pictures: left/right while not zoomed in (zoomed in they pan), shoulder buttons / tab keys at any zoom, swipe, or tap a dot. Locked pictures are skipped.</li>
+</ul>
+</main>
+</div>
+</body>
+</html>

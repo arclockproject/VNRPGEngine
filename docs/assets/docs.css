@@ -1,0 +1,321 @@
+/* Engine guide styles. Dark by default; the theme button switches to light (remembered). */
+:root {
+  color-scheme: dark;
+  --bg: #15171b;
+  --fg: #e6e7ea;
+  --muted: #9aa0aa;
+  --line: #2a2e35;
+  --code-bg: #1e2127;
+  --accent: #7aa7ff;
+  --side: #1a1d22;
+  --note: #2a2516;
+  --note-line: #8a7330;
+  --tip: #16261c;
+  --tip-line: #3f8a5a;
+  --hit: #2c3a57;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fbfbfa;
+  --fg: #1d1f23;
+  --muted: #626872;
+  --line: #e3e4e6;
+  --code-bg: #f1f2f4;
+  --accent: #2f6fdb;
+  --side: #f4f5f6;
+  --note: #fff7e0;
+  --note-line: #e7c35a;
+  --tip: #eaf7ee;
+  --tip-line: #5bb47a;
+  --hit: #dde8ff;
+}
+* {
+  box-sizing: border-box;
+}
+a {
+  color: var(--accent);
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    15px / 1.6 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  min-height: 100vh;
+}
+nav {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+  padding: 18px 14px 40px;
+  background: var(--side);
+  border-right: 1px solid var(--line);
+  font-size: 14px;
+}
+nav .title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.home-link {
+  color: var(--fg);
+  text-decoration: none;
+}
+nav a {
+  display: block;
+  color: var(--fg);
+  text-decoration: none;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+nav a:hover {
+  background: var(--line);
+}
+nav a.current {
+  font-weight: 600;
+  background: var(--line);
+}
+nav .group {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 6px;
+}
+nav .toc a {
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* A level-3 folder (story/events/): a small heading, its pages and their sections indented. */
+nav .sub {
+  margin-top: 6px;
+  padding: 3px 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+nav a.in-sub {
+  padding-left: 16px;
+}
+nav .toc-sub a {
+  padding-left: 28px;
+}
+.search {
+  position: relative;
+  margin-bottom: 6px;
+}
+.search input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.results {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: -120px;
+  max-height: 60vh;
+  overflow: auto;
+  margin-top: 4px;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+}
+nav .results a {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+nav .results a.active {
+  background: var(--hit);
+}
+.results small {
+  display: block;
+  color: var(--muted);
+}
+.theme {
+  font-size: 12px;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+main {
+  padding: 28px clamp(16px, 4vw, 48px) 80px;
+  max-width: 920px;
+}
+h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+}
+.lead {
+  color: var(--muted);
+  font-size: 16px;
+  margin: 0 0 20px;
+}
+h2 {
+  margin: 44px 0 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 22px;
+}
+h3 {
+  margin: 24px 0 6px;
+  font-size: 16px;
+}
+h2 a.anchor,
+h3 a.anchor {
+  margin-left: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  opacity: 0;
+}
+h2:hover a.anchor,
+h3:hover a.anchor {
+  opacity: 1;
+}
+p,
+ul,
+ol {
+  margin: 8px 0;
+}
+ul,
+ol {
+  padding-left: 22px;
+}
+li {
+  margin: 2px 0;
+}
+code {
+  font:
+    13px / 1.5 ui-monospace,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace;
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+pre {
+  background: var(--code-bg);
+  padding: 12px 14px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+pre code {
+  padding: 0;
+  background: none;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+  font-size: 14px;
+}
+th,
+td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+.note,
+.tip {
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin: 12px 0;
+}
+.note {
+  background: var(--note);
+  border-left: 3px solid var(--note-line);
+}
+.tip {
+  background: var(--tip);
+  border-left: 3px solid var(--tip-line);
+}
+.muted {
+  color: var(--muted);
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+main .cards a {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--fg);
+  text-decoration: none;
+}
+main .cards a:hover {
+  border-color: var(--accent);
+}
+.cards b {
+  display: block;
+  color: var(--accent);
+}
+.cards span {
+  color: var(--muted);
+  font-size: 14px;
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 56px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 760px) {
+  .layout {
+    display: block;
+  }
+  nav {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .results {
+    right: 0;
+  }
+}
+/* Coloured code (pnpm guide, Shiki): each token carries both themes' colours. */
+pre code.coloured span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+}
+:root[data-theme="light"] pre code.coloured span {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+}

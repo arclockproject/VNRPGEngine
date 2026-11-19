@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Content variants · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Content variants</h1>
+
+<p class="lead">One game, several versions of some of its content, picked when the game is built: an all-ages and an adult version, or a version for a region with its own rules (cigarettes drawn as lollipops). The other versions' files are left out of the build, not just hidden.</p>
+
+<h2 id="groups">Groups and values</h2>
+<pre><code>// src/content/config/variants.ts
+export default defineVariants({
+  rating: { values: ['allages', 'adult'], default: 'allages' },
+  region: { values: ['global', 'cn'], default: 'global' },
+})</code></pre>
+<p>A build uses one value per group: its default, or the one you name.</p>
+<pre><code>pnpm build:web --variant rating=adult --variant region=cn   // any build command takes --variant
+GAME_VARIANTS="region=cn" pnpm dev                          // try a version while you work</code></pre>
+<ul>
+  <li>Values are lowercase, different across all groups, and never the name of a language folder (both use the <code>.&lt;name&gt;</code> part of file names).</li>
+  <li>Keep the file's shape (<code>group: { values: [...], default: '...' }</code>): the build reads it as text. A misspelt <code>--variant</code> stops the build.</li>
+</ul>
+
+<h2 id="files">Files, and files per language</h2>
+<p>A file named <code>&lt;name&gt;.&lt;value&gt;.&lt;ext&gt;</code> next to <code>&lt;name&gt;.&lt;ext&gt;</code> replaces it in the builds with that value, everywhere it is used. Language versions combine with it: <code>&lt;name&gt;.&lt;value&gt;.&lt;lang&gt;.&lt;ext&gt;</code> is that version in one language. For a player of language <i>L</i> in a build with value <i>v</i> the game uses the first that exists:</p>
+<ol>
+  <li><code>sign.v.L.png</code> (this version, in the player's language)</li>
+  <li><code>sign.v.png</code> (this version: <b>a variant always beats a language</b>, so a censored picture stays censored in every language)</li>
+  <li><code>sign.L.png</code> (the player's language)</li>
+  <li><code>sign.png</code></li>
+</ol>
+<p>The demo has one: <code>src/content/backgrounds/bus_inside.cn.svg</code> (try <code>GAME_VARIANTS="region=cn" pnpm dev</code>). Every file type, with the "cn" value and Japanese:</p>
+<table>
+  <tr><th>What</th><th>Every build / languages</th><th>The "cn" version / its languages</th></tr>
+  <tr><td>Pictures anywhere (items, portraits, UI, CGs, previews; png, jpg, webp, avif, gif, svg)</td><td><code>icon.png</code>, <code>icon.ja.png</code></td><td><code>icon.cn.png</code>, <code>icon.cn.ja.png</code></td></tr>
+  <tr><td>Backgrounds and insets (<code>backgrounds/</code>, <code>insets/</code>)</td><td><code>bus_inside.svg</code>, <code>bus_inside.ja.svg</code></td><td><code>bus_inside.cn.svg</code>, <code>bus_inside.cn.ja.svg</code></td></tr>
+  <tr><td>Gallery pictures (and their thumbnails)</td><td><code>gallery/pond/image.png</code>, <code>image.ja.png</code></td><td><code>image.cn.png</code>, <code>image.cn.ja.png</code> (the thumbnail is made from the cn picture)</td></tr>
+  <tr><td>Sounds, music, ambient (<code>audio/</code>)</td><td><code>sfx/smoke.ogg</code>, <code>sfx/smoke.ja.ogg</code></td><td><code>sfx/smoke.cn.ogg</code>, <code>sfx/smoke.cn.ja.ogg</code> (needs <code>smoke.ja.ogg</code> next to it: the build says so)</td></tr>
+  <tr><td>Music per voice language (<code>audio/music/ja/</code>)</td><td><code>music/ja/town.ogg</code></td><td><code>music/ja/town.cn.ogg</code></td></tr>
+  <tr><td>Voice lines (the language is the folder)</td><td><code>voice/ja/park/anna_0012.ogg</code></td><td><code>voice/ja/park/anna_0012.cn.ogg</code></td></tr>
+  <tr><td>System voice</td><td><code>system_voice/anna/saved.ogg</code></td><td><code>system_voice/anna/saved.cn.ogg</code></td></tr>
+  <tr><td>Videos, movies, video backgrounds</td><td><code>movies/op/op.webm</code>, <code>op.ja.webm</code>, or <code>movies/op/ja/op.webm</code> (voice language)</td><td><code>op.cn.webm</code>, <code>op.cn.ja.webm</code>, <code>movies/op/ja/op.cn.webm</code></td></tr>
+  <tr><td>Title screen files (<code>titles/&lt;name&gt;/</code>)</td><td><code>titles/starlit/sky.png</code>, <code>sky.ja.png</code></td><td><code>sky.cn.png</code>, <code>sky.cn.ja.png</code></td></tr>
+  <tr><td>Aseprite, whole file (portraits, sprites, layered CGs and backgrounds)</td><td><code>jack.aseprite</code></td><td><code>jack.cn.aseprite</code> (its own language layers as usual)</td></tr>
+  <tr><td>Aseprite, one layer or group</td><td><code>Eyes</code>, <code>Eyes.ja</code></td><td><code>Eyes.cn</code>, <code>Eyes.cn.ja</code> (in the same file)</td></tr>
+  <tr><td>Spine exports</td><td><code>anna.atlas</code> + <code>anna.json</code> + pages</td><td><code>anna.cn.atlas</code> + <code>anna.cn.json</code> + its pages (or only a page: <code>anna.cn.png</code>)</td></tr>
+  <tr><td>Tiled maps and tileset images</td><td><code>town.tmx</code>, <code>tilesets/countryside.png</code></td><td><code>town.cn.tmx</code> (a different layout), <code>countryside.cn.png</code> (other tiles, same layout)</td></tr>
+  <tr><td>Fonts (<code>fonts/</code>)</td><td><code>pixel.woff2</code></td><td><code>pixel.cn.woff2</code></td></tr>
+  <tr><td>Scenes (<code>.vn</code> or a folder)</td><td><code>events/park.vn</code>, <code>events/day/</code></td><td><code>events/park.cn.vn</code>, <code>events/day.cn/</code> (text is translated as usual: no language files)</td></tr>
+  <tr><td>Any other content code or file you import</td><td><code>helpers.ts</code></td><td><code>helpers.cn.ts</code></td></tr>
+  <tr><td>Text</td><td>the scripts</td><td><code>variants/cn/strings.ts</code> rewords lines, then every language translates the new line (<a href="#text">below</a>)</td></tr>
+</table>
+<ul>
+  <li>A file of a value is never content of its own: <code>smoke.cn.ogg</code> is not a sound id, <code>park.adult.vn</code> not an event, <code>sky.cn.png</code> not an extra title screen file.</li>
+  <li>The other values' files are not in the build at all (not even as language versions or thumbnails); the plain file is not either when the build has its version.</li>
+  <li>An Aseprite layer of a value takes the place, name and visibility of the layer it replaces, like a language layer.</li>
+</ul>
+
+<h2 id="scenes">Scenes</h2>
+<pre><code>src/content/events/park.vn          // every other build
+src/content/events/park.adult.vn    // the "adult" build plays this one as the event "park"
+src/content/events/day.adult/       // a whole folder works the same for events/day/</code></pre>
+<p>A scene only one version has: make <code>park.vn</code> the version for the others (it can be a single line), and <code>park.adult.vn</code> the real one. Inside a scene, small differences:</p>
+<pre><code>if variant('adult'):            // .vn
+  anna: …
+if (game.variants.is('adult')) …   // .ts
+game.variants.get('region')        // 'global' | 'cn'</code></pre>
+
+<h2 id="text">Text</h2>
+<pre><code>// src/content/variants/cn/strings.ts: how the "cn" version words some lines
+export default defineVariantStrings({
+  'Thanks. Now I need a nap.': tx('Thanks. Now I need a lollipop.'),
+})</code></pre>
+<p>The key is the line as the scripts write it; the new wording is then translated like any other line (<code>pnpm lang</code> lists it). Only the build's own values' files are bundled.</p>
+
+<h2 id="only">Extras and progress only one version has</h2>
+<pre><code>export default defineGallery({ only: 'adult', title: 'At night', image })</code></pre>
+<p><code>only</code> works on gallery pictures, movies, endings, achievements, journal entries and replayable events. In the other builds the entry is an empty stand-in: its pictures are not in the build, it is not listed in Extras, and it does not count towards "Found 42%". Write <code>only</code> at the top level of the definition (the build reads it as text).</p>
+
+<h2 id="saves">Saves</h2>
+<p>A save records the version that made it. Loading one made by another version asks first ("Some scenes and pictures may be different or missing"), then loads it.</p>
+
+<h2 id="leaks">Nothing of another version leaks</h2>
+<p>A build never contains anything of a version it was not made for: not a variant scene's text, and not what only that scene uses, even when it sits in a public folder.</p>
+<pre><code>events/park.adult.vn      cg secret · sfx sfx/moan · anna(3): A line only the adult park has.
+gallery/secret/           used by no other scene  → not in the all-ages build (picture, thumbnail, title)
+gallery/pond_memory/      also shown by other scenes → in every build (as it must be)
+audio/sfx/moan.ogg        → not in the all-ages build (with moan.ja.ogg)
+audio/voice/en/park/anna_0003.ogg   only the adult line's clip → not in the all-ages build
+lang/ja/index.ts          the adult line's translation → taken out of the all-ages build</code></pre>
+<ul>
+  <li>What counts as only that version's: anything named for a value the build lacks (<code>park.adult.vn</code>, <code>day.adult/</code>, <code>variants/adult/</code>, <code>only: 'adult'</code> folders), and the gallery pictures, movies, endings, achievements, journal entries, backgrounds, insets, sounds and voice clips that only those use. A gallery picture left out takes its folder's text with it (its title).</li>
+  <li>"Used" means named in any other content file: a scene, a map, an item, a route, <code>scenes.ts</code> (the music room). If another scene uses the same CG, it ships: keeping that apart is up to you.</li>
+  <li>Lines only that version has are taken out of every language file, and so are the reworded lines of <code>variants/&lt;value&gt;/strings.ts</code>.</li>
+  <li>The build checks itself: if a file, module or line of another version would still be in it, <b>the build stops</b> and lists what. Ids made up at runtime (<code>cg('secret_' + n)</code>) can't be followed: write ids out in full in variant scenes.</li>
+</ul>
+
+<h2 id="limits">Things to know</h2>
+<ul>
+  <li>Voice clips are followed for <code>.vn</code> scenes by their voice numbers. In a <code>.ts</code> scene, name such a clip in full: <code>say('anna', '…', { voice: 'park/anna_0012' })</code> (a plain number there can't be followed, and the clip would ship).</li>
+  <li>Patches dropped next to an installed game (KiriKiri style), add-ons and mods are not built yet (dev-notes/later.md).</li>
+</ul>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Game icon (round)</title>
+  <!-- Android launcher icon, round (launchers that show round icons). -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f48fb1"/><stop offset="1" stop-color="#4fc3f7"/></linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c2333"/><stop offset="1" stop-color="#0d1117"/></linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
+  <g transform="translate(256 262) scale(2.1)">
+    <polygon fill="url(#g)" points="0,-80 19,-26 76,-25 31,10 47,65 0,32 -47,65 -31,10 -76,-25 -19,-26"/>
+    <circle r="14" fill="#0d1117"/>
+  </g>
+</svg>

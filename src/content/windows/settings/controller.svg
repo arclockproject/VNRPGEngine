@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640">
+  <title>Controller</title>
+  <!-- The controller picture behind Settings → Controls (Controller.tsx draws the buttons on top, at
+       the places in its BUTTONS table: change both together). Swap in your own art freely. -->
+  <rect x="180" y="18" width="160" height="62" rx="26" fill="#3a4356" stroke="#5a6478" stroke-width="4"/>
+  <rect x="660" y="18" width="160" height="62" rx="26" fill="#3a4356" stroke="#5a6478" stroke-width="4"/>
+  <rect x="170" y="70" width="200" height="48" rx="22" fill="#343c4d" stroke="#5a6478" stroke-width="4"/>
+  <rect x="630" y="70" width="200" height="48" rx="22" fill="#343c4d" stroke="#5a6478" stroke-width="4"/>
+  <path d="M250 112 C330 92 670 92 750 112 C860 128 930 200 960 330 C990 470 970 590 880 612 C800 628 760 560 700 482 C650 442 350 442 300 482 C240 560 200 628 120 612 C30 590 10 470 40 330 C70 200 140 128 250 112 Z" fill="#2a3140" stroke="#5a6478" stroke-width="5"/>
+</svg>

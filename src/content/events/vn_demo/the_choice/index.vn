@@ -1,0 +1,6 @@
+# Visual novel demo: Jack asks; the common route asks the player (trust him or not).
+title The question
+
+bg #2a1d1d
+show jack
+jack: Listen. I need someone to trust me. Will you?

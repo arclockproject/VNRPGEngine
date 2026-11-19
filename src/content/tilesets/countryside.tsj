@@ -1,0 +1,133 @@
+{
+ "type": "tileset",
+ "version": "1.10",
+ "tiledversion": "1.11.0",
+ "name": "countryside",
+ "tilewidth": 16,
+ "tileheight": 16,
+ "tilecount": 24,
+ "columns": 8,
+ "spacing": 0,
+ "margin": 0,
+ "image": "countryside.png",
+ "imagewidth": 128,
+ "imageheight": 48,
+ "tiles": [
+  {
+   "id": 4,
+   "properties": [
+    {
+     "name": "solid",
+     "type": "bool",
+     "value": true
+    }
+   ],
+   "animation": [
+    {
+     "tileid": 4,
+     "duration": 450
+    },
+    {
+     "tileid": 5,
+     "duration": 450
+    },
+    {
+     "tileid": 6,
+     "duration": 450
+    }
+   ]
+  },
+  {
+   "id": 8,
+   "properties": [
+    {
+     "name": "solid",
+     "type": "bool",
+     "value": true
+    }
+   ]
+  },
+  {
+   "id": 10,
+   "properties": [
+    {
+     "name": "solid",
+     "type": "bool",
+     "value": true
+    }
+   ]
+  },
+  {
+   "id": 11,
+   "properties": [
+    {
+     "name": "solid",
+     "type": "bool",
+     "value": true
+    }
+   ]
+  },
+  {
+   "id": 12,
+   "properties": [
+    {
+     "name": "solid",
+     "type": "bool",
+     "value": true
+    }
+   ]
+  },
+  {
+   "id": 16,
+   "properties": [
+    {
+     "name": "solid",
+     "type": "bool",
+     "value": true
+    }
+   ],
+   "objectgroup": {
+    "draworder": "index",
+    "name": "",
+    "objects": [
+     {
+      "height": 8,
+      "id": 1,
+      "name": "",
+      "rotation": 0,
+      "type": "",
+      "visible": true,
+      "width": 16,
+      "x": 0,
+      "y": 8
+     }
+    ],
+    "opacity": 1,
+    "type": "objectgroup",
+    "visible": true,
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": 17,
+   "properties": [
+    {
+     "name": "solid",
+     "type": "bool",
+     "value": true
+    }
+   ]
+  },
+  {
+   "id": 18,
+   "properties": [
+    {
+     "name": "solid",
+     "type": "bool",
+     "value": true
+    }
+   ]
+  }
+ ]
+}

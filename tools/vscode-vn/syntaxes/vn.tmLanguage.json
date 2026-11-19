@@ -1,0 +1,250 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "VN dialogue script",
+  "scopeName": "source.vn",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#devStart" },
+    { "include": "#header" },
+    { "include": "#code" },
+    { "include": "#narration" },
+    { "include": "#option" },
+    { "include": "#block" },
+    { "include": "#together" },
+    { "include": "#speaker" },
+    { "include": "#command" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "^\\s*(#.*)$",
+      "captures": { "1": { "name": "comment.line.number-sign.vn" } }
+    },
+    "devStart": {
+      "comment": "@start [box route/key] [answers…]: dev only, the dev server opens here.",
+      "match": "^\\s*(@start)\\b(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.vn" },
+        "2": {
+          "patterns": [
+            { "match": "\\bbox\\b", "name": "keyword.other.vn" },
+            { "match": "\\b(yes|no|true|false)\\b", "name": "constant.language.vn" },
+            { "match": "\"[^\"]*\"", "name": "string.quoted.vn" },
+            { "match": "[A-Za-z_][\\w/]*", "name": "variable.other.id.vn" }
+          ]
+        }
+      }
+    },
+    "header": {
+      "comment": "Lines at the top of a file: title (events and routes); description, color, image, after story (routes).",
+      "patterns": [
+        {
+          "match": "^(title|description)\\s+(.*)$",
+          "captures": {
+            "1": { "name": "keyword.other.header.vn" },
+            "2": { "name": "string.unquoted.header.vn" }
+          }
+        },
+        {
+          "match": "^(color)\\s+(.*)$",
+          "captures": {
+            "1": { "name": "keyword.other.header.vn" },
+            "2": { "name": "constant.other.color.vn" }
+          }
+        },
+        {
+          "match": "^(image)\\s+(\\.{1,2}/\\S*)\\s*$",
+          "captures": {
+            "1": { "name": "keyword.other.header.vn" },
+            "2": { "name": "string.unquoted.path.vn" }
+          }
+        },
+        {
+          "match": "^(after)\\s+(story)\\b(.*)$",
+          "captures": {
+            "1": { "name": "keyword.other.header.vn" },
+            "2": { "name": "keyword.other.header.vn" },
+            "3": { "patterns": [{ "include": "#conditionTags" }] }
+          }
+        }
+      ]
+    },
+    "code": {
+      "match": "^\\s*(?:(meanwhile)\\s+)?(\\$)\\s(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.meanwhile.vn" },
+        "2": { "name": "keyword.operator.code.vn" },
+        "3": { "name": "meta.embedded.ts.vn", "patterns": [{ "include": "source.ts" }] }
+      }
+    },
+    "narration": {
+      "match": "^\\s*(>)(\\((?:[^()\"]|\"[^\"]*\")*\\))?\\s(.*)$",
+      "captures": {
+        "1": { "name": "keyword.operator.narration.vn" },
+        "2": { "patterns": [{ "include": "#lineOptions" }] },
+        "3": { "name": "string.unquoted.narration.vn", "patterns": [{ "include": "#dialogue" }] }
+      }
+    },
+    "dialogue": {
+      "patterns": [
+        { "match": "\\[\\[", "name": "constant.character.escape.vn" },
+        {
+          "match": "(\\[)([^\\]]+)(\\])",
+          "captures": {
+            "1": { "name": "punctuation.section.embedded.vn" },
+            "2": { "name": "meta.embedded.ts.vn", "patterns": [{ "include": "source.ts" }] },
+            "3": { "name": "punctuation.section.embedded.vn" }
+          }
+        },
+        { "include": "#markup" }
+      ]
+    },
+    "option": {
+      "comment": "* option text, then `if <condition>` (events) or [ending x] / [flag x] (routes).",
+      "match": "^\\s*(\\*)\\s+(.*?)((?:\\s*\\[(?:ending|flag)\\s+[^\\]]*\\])*)(?:\\s+(if)\\s+(.*))?$",
+      "captures": {
+        "1": { "name": "keyword.control.option.vn" },
+        "2": { "name": "string.unquoted.option.vn", "patterns": [{ "include": "#markup" }] },
+        "3": { "patterns": [{ "include": "#conditionTags" }] },
+        "4": { "name": "keyword.control.conditional.vn" },
+        "5": { "name": "meta.embedded.ts.vn", "patterns": [{ "include": "#condition" }] }
+      }
+    },
+    "conditionTags": {
+      "match": "(\\[)(ending|flag)\\s+([^\\]]*)(\\])",
+      "captures": {
+        "1": { "name": "punctuation.section.brackets.vn" },
+        "2": { "name": "keyword.other.vn" },
+        "3": { "name": "variable.other.id.vn" },
+        "4": { "name": "punctuation.section.brackets.vn" }
+      }
+    },
+    "block": {
+      "patterns": [
+        {
+          "match": "^\\s*(choice|else|together)(:)\\s*$",
+          "captures": {
+            "1": { "name": "keyword.control.vn" },
+            "2": { "name": "punctuation.separator.vn" }
+          }
+        },
+        {
+          "comment": "Routes: choice: <question>, choice <who>: <question>.",
+          "match": "^\\s*(choice)(?:\\s+([a-z][a-z0-9_]*))?\\s*(:)\\s*(.+)$",
+          "captures": {
+            "1": { "name": "keyword.control.vn" },
+            "2": { "name": "entity.name.function.speaker.vn" },
+            "3": { "name": "punctuation.separator.vn" },
+            "4": { "name": "string.unquoted.line.vn", "patterns": [{ "include": "#dialogue" }] }
+          }
+        },
+        {
+          "match": "^\\s*(if|elif)\\s+(.*)(:)\\s*$",
+          "captures": {
+            "1": { "name": "keyword.control.conditional.vn" },
+            "2": { "name": "meta.embedded.ts.vn", "patterns": [{ "include": "#condition" }] },
+            "3": { "name": "punctuation.separator.vn" }
+          }
+        },
+        {
+          "match": "^\\s*(else)\\s*$",
+          "captures": { "1": { "name": "keyword.control.conditional.vn" } }
+        }
+      ]
+    },
+    "condition": {
+      "patterns": [
+        { "match": "\\b(and|or|not)\\b", "name": "keyword.operator.logical.vn" },
+        {
+          "match": "\\b(flag|check|has|love|money|inParty|seen)(?=\\()",
+          "name": "support.function.vn"
+        },
+        { "include": "source.ts" }
+      ]
+    },
+    "together": {
+      "match": "^\\s*((?:[a-z][a-z0-9_]*(?::[a-z][a-z0-9_]*)?)(?:\\s*&\\s*[a-z][a-z0-9_]*(?::[a-z][a-z0-9_]*)?)+)(\\((?:[^()\"]|\"[^\"]*\")*\\))?\\s*(:)\\s+(.*)$",
+      "captures": {
+        "1": {
+          "patterns": [
+            { "match": "&", "name": "punctuation.separator.vn" },
+            {
+              "match": "(:)([a-z][a-z0-9_]*)",
+              "captures": {
+                "1": { "name": "punctuation.separator.vn" },
+                "2": { "name": "variable.parameter.pose.vn" }
+              }
+            },
+            { "match": "[a-z][a-z0-9_]*", "name": "entity.name.function.speaker.vn" }
+          ]
+        },
+        "2": { "patterns": [{ "include": "#lineOptions" }] },
+        "3": { "name": "punctuation.separator.vn" },
+        "4": { "name": "string.unquoted.line.vn", "patterns": [{ "include": "#dialogue" }] }
+      }
+    },
+    "speaker": {
+      "match": "^\\s*(?:([a-z][a-z0-9_]*)(?:(:)([a-z][a-z0-9_]*))?|(\"[^\"]+\"))(\\((?:[^()\"]|\"[^\"]*\")*\\))?\\s*(:)\\s+(.*)$",
+      "captures": {
+        "1": { "name": "entity.name.function.speaker.vn" },
+        "2": { "name": "punctuation.separator.vn" },
+        "3": { "name": "variable.parameter.pose.vn" },
+        "4": { "name": "entity.name.function.speaker.vn" },
+        "5": { "patterns": [{ "include": "#lineOptions" }] },
+        "6": { "name": "punctuation.separator.vn" },
+        "7": { "name": "string.unquoted.line.vn", "patterns": [{ "include": "#dialogue" }] }
+      }
+    },
+    "lineOptions": {
+      "patterns": [
+        {
+          "match": "\\b(italic|shake|nopause|as|voice|face|size|color|speed|auto|style|none)\\b",
+          "name": "keyword.other.vn"
+        },
+        { "match": "#[0-9a-fA-F]{3,8}\\b", "name": "constant.other.color.vn" },
+        { "match": "[+-]?\\b\\d+(\\.\\d+)?\\b", "name": "constant.numeric.vn" },
+        { "match": "\"[^\"]*\"", "name": "string.quoted.vn" },
+        { "match": "[(),]", "name": "punctuation.separator.vn" },
+        { "match": "[A-Za-z_][\\w/]*", "name": "variable.other.id.vn" }
+      ]
+    },
+    "command": {
+      "comment": "Every command of event scripts (vite/vn/compile.ts) and route scripts (vite/vn/route.ts).",
+      "match": "^\\s*(?:(meanwhile)\\s+)?(show|hide|bg|cg|inset|movie|image|weather|frame|move|nvl|ending|chapter|route|filter|fade|wait|music|ambient|sfx|event|set|give|take|money|rename|reveal|love|xp|join|achievement|codex|quest|window|shop|battle|end|return)\\b(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.meanwhile.vn" },
+        "2": { "name": "keyword.other.command.vn" },
+        "3": { "patterns": [{ "include": "#args" }] }
+      }
+    },
+    "args": {
+      "patterns": [
+        {
+          "match": "\\b(at|pose|distance|tint|frame|flip|none|with|ms|as|x|y|width|height|opacity|scale|rotate|layer|back|front|top|on|off|clear|start|step|done)\\b",
+          "name": "keyword.other.vn"
+        },
+        { "match": "#[0-9a-fA-F]{3,8}\\b", "name": "constant.other.color.vn" },
+        { "match": "[+-]?\\b\\d+(\\.\\d+)?\\b", "name": "constant.numeric.vn" },
+        { "match": "\\b(true|false)\\b", "name": "constant.language.vn" },
+        { "match": "\\+=|-=|=|,", "name": "keyword.operator.vn" },
+        { "match": "'[^']*'|\"[^\"]*\"", "name": "string.quoted.vn" },
+        { "match": "(?:\\.{0,2}/)?[A-Za-z_][\\w./-]*", "name": "variable.other.id.vn" }
+      ]
+    },
+    "markup": {
+      "patterns": [
+        { "match": "\\{\\{", "name": "constant.character.escape.vn" },
+        {
+          "match": "(\\{)(/?)([a-z]+)?(?:(=)([^}]*))?(\\})",
+          "captures": {
+            "1": { "name": "punctuation.definition.tag.vn" },
+            "2": { "name": "punctuation.definition.tag.vn" },
+            "3": { "name": "entity.name.tag.vn" },
+            "4": { "name": "punctuation.separator.vn" },
+            "5": { "name": "constant.other.vn" },
+            "6": { "name": "punctuation.definition.tag.vn" }
+          }
+        }
+      ]
+    }
+  }
+}

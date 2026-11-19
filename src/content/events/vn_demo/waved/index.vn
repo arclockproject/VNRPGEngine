@@ -1,0 +1,8 @@
+# Visual novel demo: you waved back at Anna (a choice in the common route). Sets a flag the route
+# reads later: events and routes can both use flags.
+title Waving back
+
+bg #1d2a3a
+show anna at right
+set vn_met_anna = true
+anna: I'm Anna. See you around!

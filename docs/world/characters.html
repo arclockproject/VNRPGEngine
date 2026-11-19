@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Characters &amp; NPCs · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Characters &amp; NPCs</h1>
+
+<p class="lead">A character is one definition used everywhere: name and portraits in scenes, a sprite on the map, stats in the party, relationship points.</p>
+
+<h2 id="define">Defining a character</h2>
+<pre><code>// src/content/characters/jack/index.ts
+import { defineCharacter } from '@/core/define'
+import { fromAseprite } from '@/core/portrait/aseprite'
+import jack from './portraits/jack.gen'
+import sprite from './sprites/jack.gen'
+import battleSprite from './battle_sprite/jack.gen'
+
+export default defineCharacter({
+  name: 'Jack',
+  color: '#90caf9',                // name plate colour (and placeholder portrait)
+  blip: 'sfx/blip',                // short typing sound for lines without a voice clip
+  // faceArea: { x, y, w, h },    // optional: where the face is (side image, Voices tiles); see art.html#face-box
+  sprite,                          // map sprite (Aseprite with tags)
+  battleSprite,                    // in battle (./battle_sprite/jack.gen); default: the map sprite
+  layered: fromAseprite(jack, {    // portraits; or portraits: { neutral: url, happy: url }
+    defaults: { eyes: 'open', mouth: 'smile' },
+    expressions: { neutral: {}, happy: { eyes: 'happy', mouth: 'open' } },
+    blink: { layer: 'eyes', closed: 'closed' },
+    talk: { layer: 'mouth', open: 'open' },
+  }),
+  relationship: { start: 0, min: -50, max: 100 },    // optional
+  battle: {                                          // optional: can join the party
+    base: { hp: 30, attack: 5, magic: 6 }, growth: { hp: 5, attack: 1 },
+    skills: ['heal', { skill: 'fire', level: 3 }],      // from the start, or from a level / a finished quest
+    // elements: { fire: 0.5 }, immune: ['sleep'],     // what hurts them less, statuses that never stick
+  },
+})</code></pre>
+<table>
+  <tr><th>Field</th><th></th><th>More</th></tr>
+  <tr><td><code>name</code>, <code>color</code></td><td>Shown on the name plate (translated)</td><td></td></tr>
+  <tr><td><code>portraits</code> or <code>layered</code></td><td>Portraits in scenes; the keys are the <b>poses</b> (typed). Neither = a coloured placeholder.</td><td><a href="art.html#portraits">Art</a></td></tr>
+  <tr><td><code>sprite</code></td><td>The map sprite</td><td><a href="art.html#sprites">Art</a></td></tr>
+  <tr><td><code>battleSprite</code></td><td>Drawn in battle (else the map sprite)</td><td><a href="../gameplay/battles.html#battle-look">Battles</a></td></tr>
+  <tr><td><code>blip</code></td><td>Typing sound</td><td><a href="../systems/audio.html">Audio</a></td></tr>
+  <tr><td><code>relationship</code></td><td>Start value and limits of their points</td><td><a href="#relationships">below</a></td></tr>
+  <tr><td><code>battle</code></td><td>Stats, skills (also by level or quest), element rates and immunities as a party member</td><td><a href="../gameplay/battles.html#party">Party</a>, <a href="../gameplay/battles.html#battle-learning">skills</a></td></tr>
+</table>
+<div class="note">Character files load up front: don't import <code>game</code> in them.</div>
+
+<h2 id="npcs">Putting them on a map</h2>
+<p>Give a map object <code>character</code>. In Tiled, name the object (e.g. <code>jack</code>) and give it behaviour in the map's <code>objects</code>:</p>
+<pre><code>objects: {
+  jack: {
+    character: 'jack',
+    facing: 'left',
+    animation: 'idle',          // start animation
+    speed: 3,                   // tiles per second for scripted walks
+    turnToPlayer: true,         // look at the player while talking (default)
+    onInteract: ({ game }) =&gt; game.events.start('jack/hello'),
+  },
+}</code></pre>
+<ul>
+  <li>The object's id is the character id, so <code>game.maps.npc('jack')</code> finds it.</li>
+  <li>While their line types out in a scene, the NPC plays its <code>talk</code> animation (if the sprite has one).</li>
+  <li>Collision comes from the sprite's <code>collision</code> slice, or the whole tile without one. NPCs don't block while walking.</li>
+  <li>Not a character? Use <code>sprite</code> directly for animals, birds, anything animated.</li>
+</ul>
+
+<h2 id="scripting">Scripting NPCs</h2>
+<pre><code>const jack = game.maps.npc('jack')      // in map hooks: world.npc('jack')
+
+await jack.walk({ up: 2 }, { right: 3, speed: 6 }, { down: 1 })   // tiles; speed per step
+await jack.walkTo({ x: 10, y: 4 })      // around walls; false if it can't get there
+await jack.play('wave')                  // any animation tag (typed for characters)
+await jack.play('wave', { times: 2, facing: 'player' })
+await jack.play('open', { hold: true })  // stay on the last frame
+jack.idle(); jack.idle('sleep')          // back to idle / make 'sleep' the new idle
+jack.face('left'); jack.face('player')
+jack.teleport({ x: 3, y: 3 }, 'down')
+jack.speed = 4
+jack.hide(); jack.show(); jack.hidden    // hidden = not drawn, no collision, can't be talked to
+jack.exists; jack.x; jack.y; jack.facing
+void jack.bark('Over here!')             // speech bubble (below)</code></pre>
+<ul>
+  <li>Scripted walks ignore collision: you choose the path (<code>walkTo</code> finds one around walls).</li>
+  <li>A handle looks the NPC up on every call: it stays valid across map changes and does nothing (with one warning) if the NPC isn't on the map.</li>
+  <li>Positions after scripted walks are <b>not</b> saved; re-entering the map resets them (or the <a href="#schedules">schedule</a> places them).</li>
+  <li>While replaying a saved scene, walks and animations finish instantly.</li>
+</ul>
+
+<h3 id="player-cutscenes">The player and the camera</h3>
+<pre><code>await game.maps.player.walk({ left: 2 })        // player input is paused meanwhile
+await game.maps.player.walkTo({ x: 5, y: 9 })
+game.maps.player.face('up')
+await game.maps.player.bark('Hmm…')
+
+await game.maps.camera.follow('jack')           // follow an NPC
+await game.maps.camera.panTo({ x: 12, y: 6 })   // look at a tile
+await game.maps.camera.reset()                  // back to the player (default 600 ms each)</code></pre>
+<p>Walking there in a script doesn't fire <code>onEnter</code> of objects on the way.</p>
+
+<h2 id="barks">Speech bubbles</h2>
+<pre><code>void jack.bark('Nice weather today.')
+await game.maps.player.bark('Hmm…', { duration: 2000 })   // resolves when it disappears</code></pre>
+<ul>
+  <li>Text is translated; markup tags are removed.</li>
+  <li>Default time depends on the length (1.5–6 s; <code>bubble.time</code> in <code>src/content/look/map.ts</code>). A new bark replaces that speaker's old one. Changing map clears them.</li>
+  <li>Their look (colours, font, padding, the point, fade): <code>src/content/look/map.ts</code> <code>bubble</code>. Name labels and the "press A" prompt over the player are set there too.</li>
+  <li>Example: the town's <code>setup</code> makes Jack call out every 10–18 seconds when no scene is running.</li>
+</ul>
+
+<h3 id="emotes">Emote balloons</h3>
+<pre><code>await world.npc(&#39;jack&#39;).emote(&#39;surprise&#39;)                 // resolves when it is gone
+await world.player.emote(&#39;question&#39;, { duration: 2000 })
+game.maps.player.emote(&#39;love&#39;)                             // from anywhere
+
+// src/content/emotes.ts — add a line and its name works (and autocompletes)
+list: { surprise: { text: &#39;!&#39;, color: &#39;#d32f2f&#39; }, sleep: &#39;z Z&#39;, /* … */ },</code></pre>
+<p>Included: surprise, question, love, anger, sweat, idea, music, sleep, dots, happy. Size, how long they stay and the balloon colours are in the same file.</p>
+
+<h2 id="schedules">Schedules</h2>
+<p>Where an NPC is by time of day, per map:</p>
+<pre><code>jack: {
+  character: 'jack',
+  schedule: [
+    { from: '8', at: { x: 14, y: 9 }, facing: 'left' },
+    { from: '12:30', at: { x: 9, y: 11 }, facing: 'down', animation: 'idle' },
+    { from: '17', at: { x: 14, y: 9 }, walk: false },          // jumps instead of walking
+    { from: '21:30', at: { x: 31, y: 10 }, hidden: true },     // walks off, then is gone
+  ],
+}</code></pre>
+<ul>
+  <li><code>from</code>: <code>'8'</code>, <code>'08:30'</code> or <code>8.5</code>. When it comes, the NPC walks to <code>at</code> around walls.</li>
+  <li>Entering the map puts NPCs straight where their schedule says. Before the day's first entry, the last one still applies (so night lasts until morning).</li>
+  <li>The clock stops while you talk or interact (see <a href="maps.html#time">time of day</a>), so an NPC never walks off mid-conversation.</li>
+  <li>A walking NPC can't be talked to (no prompt either) until it stops.</li>
+  <li>The maps test checks that every schedule spot is on a walkable tile.</li>
+</ul>
+
+<h2 id="names">Names that change</h2>
+<p>A character can start hidden and change name during the story. Set <code>unknownName</code> and the game shows it until it is revealed:</p>
+<pre><code>// characters/god/index.ts
+export default defineCharacter({ name: 'God', unknownName: '???' })
+
+// in an event (from its context): any text as a fake name, changed as often as you like
+rename('god', 'Stranger')
+// the real name, from now on
+reveal('god')
+
+// anywhere else
+game.characters.rename('god', 'Evil God'); game.characters.reveal('god')
+game.characters.name('god')        // what is shown now (translated)
+game.characters.known('god')       // false while the name is still hidden
+game.characters.forget('god')      // back to the start
+const name = useCharacterName('god')   // React, from '@/core/managers/characters'</code></pre>
+<ul>
+  <li>The shown name is saved with the game and used for every line they say from then on. Lines already in the log keep the name they were said with.</li>
+  <li>For one line only, use the line style <code>as</code>: <code>say('god', '…', { as: 'A voice' })</code>.</li>
+  <li>In <code>.vn</code> scripts: <code>rename god "Evil God"</code> and <code>reveal god</code>.</li>
+</ul>
+
+<h2 id="relationships">Relationships</h2>
+<p>Points per character: how much they like the player.</p>
+<pre><code>game.relationships.get('anna')                          // the character's start value at first
+game.relationships.change('anna', 5, { notify: true })  // toast "♥ Anna +5"; returns the new value
+game.relationships.set('anna', 20)
+game.relationships.all()                                // { anna: 20, jack: 0, … }
+const points = useRelationship('anna')                  // React, from '@/core/managers/relationships'</code></pre>
+<p>Saved with the game and kept within the character's <code>min</code>…<code>max</code> (default −100…100). Use them in scenes, e.g. a choice that is <a href="../story/events/scripts.html#choices">disabled</a> until Anna likes you enough. In <code>.vn</code> scripts: <code>love anna +3</code> and <code>if love('anna') &gt;= 10:</code>.</p>
+</main>
+</div>
+</body>
+</html>

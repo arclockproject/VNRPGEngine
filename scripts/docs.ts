@@ -1,0 +1,145 @@
+// pnpm guide -> refreshes the engine guide's generated files from docs/**/*.html (pages may sit in
+// sub-folders, e.g. story/events/stage.html; a page is named by its path from docs/):
+//   docs/assets/search-index.gen.js  every h2/h3 section, for the search box
+//   docs/assets/code.gen.js          every code block coloured by Shiki (dark + light themes)
+// The pages stay plain HTML. docs.js swaps a block for its coloured version when its text matches
+// (a block edited since the last `pnpm guide` simply shows uncoloured). Blocks are TypeScript by
+// default; <code class="language-sh"> / "language-vn" pick another language.
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { createHighlighter } from 'shiki'
+
+const ROOT = path.resolve(import.meta.dirname, '..')
+const DOCS = path.join(ROOT, 'docs')
+const VN_GRAMMAR = path.join(ROOT, 'tools/vscode-vn/syntaxes/vn.tmLanguage.json')
+const LANGS: Record<string, string> = { ts: 'tsx', sh: 'shellscript', vn: 'vn', html: 'html' }
+
+const decode = (html: string) =>
+  html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+
+/** Same hash as docs.js uses to find a block's coloured version. */
+export function codeKey(text: string): string {
+  let hash = 5381
+  for (let i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0
+  return `${hash.toString(36)}-${text.length}`
+}
+
+/** The same ids docs.js gives headings without one. */
+function slugger(html: string) {
+  const explicit = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1] as string))
+  const used = new Set<string>()
+  return (title: string, id: string | undefined) => {
+    if (id) {
+      used.add(id)
+      return id
+    }
+    let slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    while (used.has(slug) || explicit.has(slug)) slug += '-'
+    used.add(slug)
+    return slug
+  }
+}
+
+export interface SearchEntry {
+  page: string
+  id: string
+  title: string
+  text: string
+}
+
+export function searchEntries(page: string, html: string): SearchEntry[] {
+  const main = html.slice(html.indexOf('<main>'), html.indexOf('</main>'))
+  const slug = slugger(html)
+  const headings = [...main.matchAll(/<h([23])([^>]*)>([\s\S]*?)<\/h\1>/g)]
+  return headings.map((m, i) => {
+    const id = /\sid="([^"]+)"/.exec(m[2] as string)?.[1]
+    const title = decode(m[3] as string).trim()
+    const start = (m.index ?? 0) + m[0].length
+    const end = headings[i + 1]?.index ?? main.length
+    const text = decode(main.slice(start, end)).replace(/\s+/g, ' ').trim().slice(0, 700)
+    return { page, id: slug(title, id), title, text }
+  })
+}
+
+export function codeBlocks(html: string): { lang: string; text: string }[] {
+  return [
+    ...html.matchAll(/<pre><code(?:\s+class="language-([a-z]+)")?>([\s\S]*?)<\/code><\/pre>/g),
+  ].map((m) => ({ lang: m[1] ?? 'ts', text: decode(m[2] as string) }))
+}
+
+/** Every page, as its path from docs/ with "/" ('world/maps.html'). assets/ holds no pages. */
+export function pages(): { file: string; html: string }[] {
+  return (readdirSync(DOCS, { recursive: true }) as string[])
+    .map((f) => f.split(path.sep).join('/'))
+    .filter((f) => f.endsWith('.html') && !f.startsWith('assets/'))
+    .sort()
+    .map((file) => ({ file, html: readFileSync(path.join(DOCS, file), 'utf8') }))
+}
+
+/** Every id a link can jump to on a page: explicit ids, and the ones docs.js gives h2/h3. */
+export function pageIds(html: string): Set<string> {
+  const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1] as string))
+  for (const entry of searchEntries('', html)) ids.add(entry.id)
+  return ids
+}
+
+/** The two generated files' contents. */
+export async function buildDocsAssets(): Promise<{ search: string; code: string }> {
+  const all = pages()
+  const search = all.flatMap(({ file, html }) => searchEntries(file, html))
+
+  const vn = JSON.parse(readFileSync(VN_GRAMMAR, 'utf8'))
+  const highlighter = await createHighlighter({
+    themes: ['github-dark', 'github-light'],
+    langs: [
+      'tsx',
+      'typescript',
+      'shellscript',
+      'html',
+      { ...vn, name: 'vn', embeddedLangs: ['typescript'] },
+    ],
+  })
+  const code: Record<string, string> = {}
+  for (const { html } of all) {
+    for (const block of codeBlocks(html)) {
+      const key = codeKey(block.text)
+      if (code[key]) continue
+      const lang = LANGS[block.lang] ?? 'tsx'
+      const out = highlighter.codeToHtml(block.text, {
+        lang,
+        themes: { dark: 'github-dark', light: 'github-light' },
+        defaultColor: false,
+      })
+      code[key] = /<code>([\s\S]*)<\/code>/.exec(out)?.[1] ?? ''
+    }
+  }
+  highlighter.dispose()
+
+  const header = '// AUTO-GENERATED by `pnpm guide` (scripts/docs.ts). Do not edit.\n'
+  // Sorted keys, so the files only change when the docs do.
+  const sorted = Object.fromEntries(Object.entries(code).sort(([a], [b]) => a.localeCompare(b)))
+  return {
+    search: `${header}window.DOCS_INDEX = ${JSON.stringify(search, null, 1)}\n`,
+    code: `${header}window.DOCS_CODE = ${JSON.stringify(sorted, null, 1)}\n`,
+  }
+}
+
+export const SEARCH_FILE = path.join(DOCS, 'assets/search-index.gen.js')
+export const CODE_FILE = path.join(DOCS, 'assets/code.gen.js')
+
+if (process.argv[1] === import.meta.filename) {
+  const { search, code } = await buildDocsAssets()
+  writeFileSync(SEARCH_FILE, search)
+  writeFileSync(CODE_FILE, code)
+  console.log(`[docs] ${path.relative(ROOT, SEARCH_FILE)}, ${path.relative(ROOT, CODE_FILE)}`)
+}

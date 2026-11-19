@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Events: the stage · Engine Guide</title>
+<link rel="stylesheet" href="../../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../../assets/search-index.gen.js" defer></script>
+<script src="../../assets/code.gen.js" defer></script>
+<script src="../../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Events: the stage</h1>
+<p class="lead">What the player sees during a scene: portraits, backgrounds and filters, pictures, effects and full-page text.</p>
+<h2 id="portraits">Portraits on stage</h2>
+<pre><code>show('anna')                                         // default pose, centre
+show('anna', { at: 'left', pose: 'happy', flip: true })
+show('jack', { parts: { outfit: 'hoodie' } })        // layered portraits: swap one part
+show('anna', { distance: 'close' })                  // steps nearer (a name from scenes.ts)
+show('jack', { at: 'center', scale: 0.35, y: -140 }) // small and high = far away …
+await animate('jack', { scale: 1, y: 0 }, { duration: 1500 })   // … then walk closer
+hide('anna'); hide()</code></pre>
+<table>
+  <tr><th>Option</th><th></th></tr>
+  <tr><td><code>pose</code></td><td>A pose of that character (typed)</td></tr>
+  <tr><td><code>at</code></td><td><code>farleft</code>, <code>left</code>, <code>center</code>, <code>right</code>, <code>farright</code>, or any name you add. Moving someone slides them there.</td></tr>
+  <tr><td><code>distance</code></td><td><code>far</code>, <code>normal</code>, <code>close</code>, <code>face</code>, or any name you add: a size and a height together. Someone already on stage steps there; <code>scale</code> / <code>y</code> given in the same call win.</td></tr>
+  <tr><td><code>flip</code>, <code>scale</code>, <code>offsetX</code>, <code>y</code></td><td>Mirror, size (from the feet), offsets in stage pixels (see below). <code>y</code>: negative = up.</td></tr>
+  <tr><td><code>parts</code></td><td>Layered portraits only; changing pose keeps these</td></tr>
+  <tr><td><code>tint</code></td><td>A filter or tint on this character only (<a href="#tints">tints</a>); <code>null</code> = none, even when everyone else has one</td></tr>
+</table>
+<p>The speaker is highlighted and others dimmed. New portraits fade in. Characters without portraits get a coloured placeholder.</p>
+<p>Positions, distances, their timings and the dimming live in <code>src/content/scenes.ts</code> under <code>stage</code>:</p>
+<pre><code>stage: {
+  positions: { farleft: 10, left: 25, center: 50, right: 75, farright: 90 }, // % of the screen width
+  distances: {
+    far: { scale: 0.75, y: -40 },   // y: stage pixels down (negative = up)
+    normal: { scale: 1, y: 0 },
+    close: { scale: 1.3, y: 110 },
+    face: { scale: 1.9, y: 420 },
+  },
+  distanceMs: 300, slideMs: 350, fadeInMs: 300,
+  dim: { on: true, brightness: 0.55, fadeMs: 200 }, // on: false = nobody goes darker
+}</code></pre>
+
+<h3 id="portrait-framing">How much of a portrait shows (full-body art)</h3>
+<p>By default the whole picture fits <code>portraitHeight</code> (78% of the screen height, <code>src/content/config/screen.ts</code>) and its bottom stands on the screen's bottom edge. For full-body art, name the part of the picture that should fill that height instead; the rest carries on past it (below the screen, or above the shown part), like Ren'Py's anchor, position and zoom but in parts of the picture instead of pixels:</p>
+<pre><code>// src/content/config/screen.ts: every character
+stage: { …, show: [0, 0.6] },   // top of the picture (0) to 60% down: head to waist
+
+// src/content/characters/anna/index.ts: only her
+stage: {
+  show: [0, 0.55],   // head to waist; her legs are below the screen
+  scale: 0.95,       // a little smaller than the others
+  x: 0, y: 10,       // a nudge in stage pixels (y &gt; 0 = down)
+},
+
+// other framings
+show: [0, 1]       // the whole picture (the default)
+show: [0, 0.8]     // head to the knees
+show: [0.25, 1], scale: 1.3   // neck to feet fills the screen's height: the head is above the top edge</code></pre>
+<ul>
+  <li>The two numbers are the share of the picture from its top edge: <code>0</code> = the top, <code>1</code> = the bottom. The part between them fills the portrait height and its bottom sits on the screen's edge.</li>
+  <li>Nothing is ever cut in mid-air: only the screen's edges cut a picture. Below the second number the picture carries on past the bottom edge (raise the character with a distance or <code>y</code> and the legs come into view, as in Ren'Py). Above the first number it sticks up above the shown part; to hide a head, make the shown part reach the top of the screen (<code>scale</code> = 100 / <code>portraitHeight</code>, about 1.3).</li>
+  <li><code>portraitWidth</code> still limits how wide the whole picture gets; a picture that hits it shrinks, framing and all.</li>
+  <li>Distances, <code>show()</code> and <code>animate()</code> move and zoom from there (zoom grows from the screen's bottom edge). Their <code>y</code> values were made for whole pictures: with cropped full-body art, <code>close</code> and <code>face</code> may want less <code>y</code>.</li>
+  <li>The side image and Settings → Voices are not affected (they use the <a href="../../world/art.html#face-box">face box</a>). It works for plain, layered (Aseprite) and Spine portraits.</li>
+</ul>
+
+<h3 id="frame-moment">Framing for one moment, and animating it</h3>
+<p>The same numbers work in <code>show()</code> and <code>animate()</code> as <code>frame</code>, for one moment of a scene. They are measured against the character's own framing above, so <code>[0, 1]</code> is always their normal look.</p>
+<pre><code>show('anna', { frame: [0.65, 1] })                          // only her legs (the bottom 35%)
+await animate('anna', { frame: [0, 0.35] }, { duration: 2500, ease: 'quadInOut' })   // pan up to her face
+await animate('anna', { frame: [0, 1] }, { duration: 600 }) // back to normal
+
+// .vn
+show anna frame 0.65 1
+frame anna 0 0.35 ms 2500
+frame anna 0 1 ms 600</code></pre>
+<ul>
+  <li>The part named fills the normal portrait height, its bottom on the screen's bottom edge (behind the chat box, like the normal framing). To end on a face above the box, aim a little lower than the face: e.g. <code>[0.1, 0.45]</code>.</li>
+  <li>Parts of the same size have the same zoom, so going from one to another is a pan; a smaller part zooms in.</li>
+  <li><code>frame</code> becomes a <code>scale</code> and <code>y</code>: a <code>scale</code> / <code>y</code> given in the same call wins, it wins over <code>distance</code>, and it is part of saves and Back like any position.</li>
+</ul>
+<p>New names are typed at once (<code>at: 'midleft'</code>) and the .vn editor suggests them. Without <code>at</code> a new character stands at <code>center</code> (or the first position if you removed it).</p>
+
+<h3 id="side-image">Side image</h3>
+<p>The speaker&#39;s face next to the text, cut from their portrait with their <a href="../../world/art.html#face-box">face box</a> (the one Settings → Voices uses too).</p>
+<pre><code>// src/content/scenes.ts
+sideImage: {
+  showByDefault: &#39;offstage&#39;,  // new players; the player picks in Settings → Text
+  size: 0.8,                  // a square, 80% of the text box&#39;s height…
+  minSize: 150,               // …but at least 150 px on a 720-tall screen…
+  side: &#39;left&#39;,               // …and never taller than the box
+  inset: [12, 6],             // space to the box&#39;s edge, px: normal, short screens
+  place: &#39;inside&#39;,            // &#39;inside&#39; the box, or &#39;outside&#39; next to it
+},
+
+say(&#39;anna&#39;, &#39;Are you there?&#39;, { face: &#39;worried&#39; })           // the pose shown in the side image for this line</code></pre>
+<ul>
+  <li><b>When</b> it shows is a player setting (Settings → Text → <i>Face next to the text</i>): <code>offstage</code> (only while the speaker is not on the stage: a voice on the phone, the player character), <code>always</code> or <code>never</code>.</li>
+  <li><b>Size</b>: the box is 300 px tall and <code>size</code> is 0.8 → a 240 × 240 face. A 155 px box gives 150 (<code>minSize</code> wins over 124). A 140 px box gives 140: the face never sticks out of the box. The text moves aside to make room.</li>
+  <li><b>Place</b>: <code>&#39;inside&#39;</code> (default) sits in the box; <code>&#39;outside&#39;</code> sits next to the box on <code>side</code> (only with the <a href="#chat-box-modes">layout</a> <code>&#39;center&#39;</code>). Outside, the box always keeps the room free beside it, so it does not move when a line has no face.</li>
+  <li>Its frame is the look <code>sideImage</code> (background, border). Take out its <code>background</code> and border to show only the face, or give it a thicker border. Characters without a portrait show none.</li>
+</ul>
+
+<h3 id="chat-box-modes">The chat box's layout: center or full</h3>
+<pre><code>// src/content/scenes.ts
+textBox: {
+  layout: &#39;center&#39;,         // or &#39;full&#39;
+  maxWidth: 960,            // center: the widest the box gets, px
+  margin: [16, 4],          // center: screen left free on each side, px: normal, short screens
+  textSpace: [200, 110],    // full: room on each side of the text, px
+},</code></pre>
+<ul>
+  <li><b>center</b>: a box in the middle of the bottom. A side image inside it pushes the text over while it shows. With <code>sideImage.place: &#39;outside&#39;</code> the face sits next to the box instead.</li>
+  <li><b>full</b>: the box spans the screen edge to edge. The text sits in the middle with <code>textSpace</code> free on both sides; the side image sits in its side&#39;s space (made smaller if the space is narrower), so the text never moves. The name tag starts where the text does.</li>
+  <li>TextDialog.tsx reads these: for anything else, edit it (below).</li>
+</ul>
+
+<h3 id="chat-box-look">A chat box per character</h3>
+<p>A character can have their own chat box while they speak. In their file (<code>src/content/characters/anna/index.ts</code>) name looks from <code>src/content/look/parts.ts</code>:</p>
+<pre><code>// characters/anna/index.ts
+chatBox: { box: 'annaBox', name: 'annaName', text: 'annaText' },   // each one is optional
+
+// look/parts.ts
+annaBox: { css: { boxShadow: '0 0 22px rgba(244, 143, 177, 0.55)' } },
+annaName: { background: '#f48fb1', color: '#3a0d1f' },
+annaText: { color: '#ffe9f1' },</code></pre>
+<ul>
+  <li><code>box</code> goes over the normal chat box (<code>dialog</code> in <code>look/index.ts</code>), <code>name</code> over the name tag (it wins over the character's <code>color</code>), <code>text</code> over the text of their lines (a line's own <code>color</code> still wins).</li>
+  <li>For another frame, give <code>box</code> a picture like <code>look/frames.ts</code> does (<code>image</code>, <code>slice</code>, <code>scale</code>). Keep the border as wide as the normal box's: the text sits inside it. A frame picture covers a <code>background</code> colour.</li>
+  <li>Narration, speakers without a character file (<code>"Student A"</code>) and characters without <code>chatBox</code> use the normal box. Full-page text (<code>nvl</code>) always does.</li>
+  <li>The player's "Text box opacity" still fades only the box, so keep text colours solid.</li>
+</ul>
+
+<h3 id="chat-box-layout">The chat box's layout: TextDialog.tsx</h3>
+<p><code>src/content/ui/TextDialog.tsx</code> lays out the chat box from parts the engine makes. Move them, leave some out, or add your own (a logo, a page number):</p>
+<pre><code>// src/content/ui/TextDialog.tsx
+import { ChatBoxFrame, ChatBoxPlace, DialogTextArea } from '@/core/ui/ChatBox'
+
+export function TextDialog({ background, text, continueMark, face, nameTag, toolbar, nvl }: TextDialogSlotProps) {
+  return (
+    &lt;ChatBoxPlace sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, p: 2, display: 'flex', justifyContent: 'center' }}&gt;
+      &lt;ChatBoxFrame sx={{ width: 'min(960px, 100%)' }}&gt;
+        {background}
+        &lt;DialogTextArea sx={{ minHeight: 150, px: 3, pt: 2.5, pb: 2 }}&gt;
+          {text}
+          {continueMark}
+        &lt;/DialogTextArea&gt;
+        {face}{nameTag}{toolbar}
+        &lt;Box component="img" src={logo} alt="" sx={{ position: 'absolute', right: 12, bottom: 12, width: 40, pointerEvents: 'none' }} /&gt;
+      &lt;/ChatBoxFrame&gt;
+    &lt;/ChatBoxPlace&gt;
+  )
+}</code></pre>
+<table>
+  <tr><th>Part</th><th></th></tr>
+  <tr><td><code>background</code></td><td>The box's look (<code>dialog</code>, a character's <code>chatBox</code>), faded by "Text box opacity"</td></tr>
+  <tr><td><code>text</code></td><td>The typing text. Must stay, inside <code>&lt;DialogTextArea&gt;</code> (without it a line can't type; dev warns)</td></tr>
+  <tr><td><code>continueMark</code></td><td>The ▼ once the line is done (<code>null</code> while typing), in the corner of the text area. Its look: <code>src/content/ui/ContinueMark.tsx</code></td></tr>
+  <tr><td><code>face</code></td><td>The <a href="#side-image">side image</a>, or <code>null</code></td></tr>
+  <tr><td><code>nameTag</code></td><td>The name on the top edge, or <code>null</code> (narration, full pages). Its look: <code>src/content/ui/NameTag.tsx</code></td></tr>
+  <tr><td><code>toolbar</code></td><td>Settings / Save / Load / … / Hide (<a href="#toolbar">its own file</a>)</td></tr>
+  <tr><td><code>voiceBar</code></td><td>How long the line&#39;s voice still plays (<code>src/content/ui/VoiceBar.tsx</code>), or <code>null</code> on a line without a voice. <a href="#voice-bar">More</a></td></tr>
+</table>
+<ul>
+  <li>Each part goes in once. Also given: <code>speaker</code>, <code>name</code>, <code>nvl</code> (full-page text), <code>typed</code> (the line has finished typing), <code>read</code> (read before, in any playthrough). Types: <code>TextDialogSlotProps</code> in <code>@/core/slots</code>.</li>
+  <li>Three wrappers from <code>@/core/ui/ChatBox</code>, each once, outside in. Their <code>sx</code> (where, how wide, padding) is yours; they only add what the engine needs. <code>&lt;ChatBoxPlace&gt;</code>: where the box sits on the screen (hides on Hide). <code>&lt;ChatBoxFrame&gt;</code>: the box itself, measured for the side image's size (dev warns without it). <code>&lt;DialogTextArea&gt;</code>: keeps the text clear of the side image and scrolls full pages to the newest line. Use <code>SHORT_SCREEN</code> (<code>@/core/layers/screen</code>) for phones held sideways.</li>
+  <li><code>&lt;ChatBoxFrame&gt;</code> is <code>position: relative</code>: <code>position: 'absolute'</code> inside it sits on the box. Give added pictures <code>pointerEvents: 'none'</code> so a click still continues the text. They are not faded by "Text box opacity".</li>
+  <li>The frame has the CSS variable <code>--face-room</code>: the width a side image inside the box takes (<code>0px</code> without one). Something along the box&#39;s bottom keeps clear of the face with <code>pl: &#39;var(--face-room, 0px)&#39;</code> (the toolbar row does).</li>
+</ul>
+
+<h3 id="voice-bar">The voice bar: VoiceBar.tsx</h3>
+<p>While a line&#39;s voice plays, the word <i>Voice</i> with a bar that empties until the longest clip of the line ends (a line said together has several). Default place: the right of the box, just above the ▼. Its look is <code>src/content/ui/VoiceBar.tsx</code>; where it sits is TextDialog.tsx (the <code>voiceBar</code> part).</p>
+<ul>
+  <li>It gets <code>durationMs</code> (the whole voice) and <code>elapsedMs</code> (played so far). The bar is a CSS animation <code>durationMs</code> long started <code>elapsedMs</code> in (a negative <code>animationDelay</code>): it never redraws per frame.</li>
+  <li>It shows nothing while no clip plays (the clip ended, or a line without a voice).</li>
+</ul>
+
+<h3 id="toolbar">The toolbar's buttons: SceneToolbar.tsx</h3>
+<p><code>src/content/ui/SceneToolbar.tsx</code> draws the toolbar's buttons: words or icons, gaps, sizes, order, which ones show. What each button does and its on / off state are the engine's; where the toolbar sits is <code>toolbar.place</code> (<a href="#toolbar-place">below</a>). The strip's frame is <code>sceneToolbar</code> in <code>src/content/look/parts.ts</code>.</p>
+<table>
+  <tr><th>id</th><th>Does</th></tr>
+  <tr><td><code>settings</code></td><td>Opens Settings</td></tr>
+  <tr><td><code>lock</code></td><td>Keeps an auto-hiding toolbar shown; its label is <i>Lock</i> / <i>Unlock</i>. Only with <code>toolbar.autoHide</code></td></tr>
+  <tr><td><code>save</code>, <code>load</code></td><td>The Saves window, to save / to load</td></tr>
+  <tr><td><code>quickSave</code>, <code>quickLoad</code></td><td>The quick save slot</td></tr>
+  <tr><td><code>skipBack</code></td><td>Back again and again (one line every <code>toolbar.skipBackMs</code>, 250) until pressed again, a click / confirm / answer, a window opening, or nothing is left</td></tr>
+  <tr><td><code>lastChoice</code></td><td>Back to the last choice the player made: it is asked again (in a route also in earlier scenes, like Back)</td></tr>
+  <tr><td><code>back</code></td><td>One line back</td></tr>
+  <tr><td><code>auto</code></td><td>Auto-play on / off</td></tr>
+  <tr><td><code>toChoice</code></td><td>Skip quickly to the next choice</td></tr>
+  <tr><td><code>skip</code></td><td>Skip read lines on / off</td></tr>
+  <tr><td><code>flowchart</code></td><td>The Flowchart. Only in visual novel mode</td></tr>
+  <tr><td><code>replayVoice</code></td><td>Plays the line&#39;s voice again; <code>disabled</code> on lines without one</td></tr>
+  <tr><td><code>favouriteVoices</code></td><td>Extras on its Voices tab. Only with <code>voice.favourites.on</code></td></tr>
+  <tr><td><code>hide</code></td><td>Hides the box and choices</td></tr>
+</table>
+<p>That is also the default order. The default file shows icons for most of them and the words Save / Load / Q.Save / Q.Load (icons on phones held sideways, where the words don't fit); each button&#39;s name shows as a tooltip.</p>
+<pre><code>// src/content/ui/SceneToolbar.tsx: a picture instead of the word
+import autoIcon from './assets/ui/auto.svg'
+const ICONS = {
+  auto: autoIcon,                                     // an image file (.svg, .png…)
+  hide: &lt;svg viewBox="0 0 16 16" width="16" height="16"&gt;
+          &lt;path d="M2 8h12" stroke="currentColor" /&gt;   // your own SVG: currentColor = the button's colour
+        &lt;/svg&gt;,
+}
+const LABEL_WITH_ICON = false   // true = the word next to the icon</code></pre>
+<ul>
+  <li>It gets <code>buttons</code> (each: <code>id</code>, <code>label</code> translated, <code>on</code> while Auto / Skip / To choice / Skip back / Lock is on, <code>disabled</code> when it has nothing to do (draw it faded; presses are ignored), <code>press()</code>) and <code>where</code> (<code>'box'</code> or <code>'choices'</code>). Types: <code>SceneToolbarSlotProps</code> in <code>@/core/slots</code>.</li>
+  <li>Draw each with <code>&lt;SceneToolbarButton button={b} sx={…}&gt;</code> (<code>@/core/ui/SceneToolbarButton</code>): it runs the action, keeps the click from also continuing the text, and keeps the label as the button's name for screen readers. Its children are what it shows.</li>
+  <li>Leave a button out of the list to hide it; sort the list to reorder.</li>
+</ul>
+
+<h3 id="toolbar-place">Where the toolbar sits, and hiding it</h3>
+<pre><code>// src/content/scenes.ts
+toolbar: {
+  place: &#39;boxBottom&#39;,   // &#39;boxTop&#39; | &#39;boxBottom&#39; | &#39;screen&#39;
+},</code></pre>
+<ul>
+  <li><code>&#39;boxBottom&#39;</code>: a row inside the box along its bottom, at the right, clear of the side image (the ▼ and the voice bar sit above it).</li>
+  <li><code>&#39;boxTop&#39;</code> (the engine&#39;s default when <code>place</code> is left out): on the box&#39;s top edge, at the right. Full-page text always uses this.</li>
+  <li><code>&#39;screen&#39;</code>: the screen&#39;s bottom right corner, under the box (the box moves up to make room).</li>
+</ul>
+<p>TextDialog.tsx reads it and wraps the <code>toolbar</code> part in <code>&lt;SceneToolbarPlace&gt;</code> (<code>@/core/ui/SceneToolbarPlace</code>), whose <code>sx</code> places it; edit that for any other spot. While choices show without a line, <code>src/content/ui/Choice.tsx</code> places it (default: the bottom right corner).</p>
+<p>To hide it until the mouse comes near, in <code>src/content/scenes.ts</code>:</p>
+<pre><code>toolbar: {
+  autoHide: { zone: 50, delay: 400, slide: 24, ms: 200 },   // null = always shown
+},</code></pre>
+<ul>
+  <li>The bar slides down <code>slide</code> px and fades out (<code>ms</code>) unless the mouse is within <code>zone</code> px of the game screen's bottom edge (across its whole width, however many buttons there are) or over the bar. It hides <code>delay</code> ms after the mouse leaves. With "Reduce motion" it only fades. Both places follow it.</li>
+  <li>The player can keep it shown: a <b>Lock</b> button on the bar (id <code>lock</code>) and "Keep the scene buttons shown" in Settings → Text (both only with <code>autoHide</code>). Remembered per device.</li>
+  <li>Keyboard focus inside the bar shows it. On touch screens (no mouse to hover with) it always shows.</li>
+  <li>While hidden, clicks go through to the scene. Leave some room under the box so the bar doesn't cover it.</li>
+</ul>
+
+<h3 id="choice-layout">The choices' layout: Choice.tsx</h3>
+<p><code>src/content/ui/Choice.tsx</code> lays out a choice: where the answers sit, their look and spacing, the ✓ mark, the time-left bar, and the toolbar while no line shows.</p>
+<pre><code>&lt;ChoiceList sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, width: 'min(520px, 90cqw)' }}&gt;
+  {timer}
+  {answers.map((answer) =&gt; (
+    &lt;ChoiceButton key={answer.label} answer={answer} sx={…}&gt;
+      {answer.chosen &amp;&amp; scenes.choices.chosenMark}{answer.label}
+    &lt;/ChoiceButton&gt;
+  ))}
+&lt;/ChoiceList&gt;</code></pre>
+<ul>
+  <li>From <code>@/core/ui/Choice</code>, their <code>sx</code> is yours. <code>&lt;ChoiceList&gt;</code> holds the answers: arrows / d-pad move between them, nothing is focused at first (the first up / down focuses one, so hammering confirm through the dialogue never picks by accident), and a click on it doesn't reach the scene (dev warns without it). <code>&lt;ChoiceButton&gt;</code> is one answer: it picks it, and is disabled while its condition isn't met. Its children are what it shows.</li>
+  <li>Parts: <code>answers</code> (each <code>index</code>, <code>label</code>, <code>disabled</code> = why it can't be picked or <code>null</code>, <code>chosen</code> = picked before), <code>timer</code> (or <code>null</code>), <code>toolbar</code> (or <code>null</code> when a line shows), <code>withLine</code>. Types: <code>ChoiceSlotProps</code> in <code>@/core/slots</code>.</li>
+  <li>Answer looks: <code>choice</code> and <code>choiceChosen</code> in <code>src/content/look</code>.</li>
+</ul>
+
+<h2 id="backgrounds">Backgrounds and filters</h2>
+<h3 id="background-library">The background library</h3>
+<p>A background in <code>src/content/backgrounds/</code> is one of two things:</p>
+<ul>
+  <li><b>One picture</b> (or a video): drop the file in. Its id is its path without the extension. A language version sits next to it as <code>&lt;name&gt;.&lt;language&gt;.&lt;ext&gt;</code> (<a href="../../interface/translations.html#assets">Translations</a>).</li>
+  <li><b>A picture with variants</b> (time of day, lights on, rain): a folder with an <code>.aseprite</code> file and an <code>index.ts</code>, made exactly like a <a href="../../world/art.html#layered-cg">layered CG</a>. Layers whose name starts with <code>+</code> are toggles; <code>variants</code> names sets of them. With variants a background has <b>only</b> those: add <code>base: {}</code> (or any name) for the picture with no toggles on.</li>
+</ul>
+<pre><code class="language-sh">src/content/backgrounds/
+  street.png                       # 'street'
+  street.ja.png                    # the Japanese version of street.png
+  school/classroom.webp            # 'school/classroom'
+  town/bus_stop/index.ts           # 'town/bus_stop', with variants
+  town/bus_stop/bus_stop.aseprite  # layers "Day" and "+evening"</code></pre>
+<pre><code>// src/content/backgrounds/town/bus_stop/index.ts
+import { defineBackground } from '@/core/define'
+import picture from './bus_stop.gen'   // made from bus_stop.aseprite
+
+export default defineBackground({
+  image: picture,
+  variants: {
+    day: {},                     // no toggles on
+    evening: { evening: true },  // the "+evening" layer on
+  },
+})</code></pre>
+<pre><code>bg('street')                                       // ids and variants are typed: a typo is an error
+bg('town/bus_stop', 'evening')                     // a background with variants must name one
+bg('street', null, { transition: 'wipeLeft', duration: 800 })   // the options of background()</code></pre>
+<ul>
+  <li>In a .vn file: <code>bg street</code>, <code>bg town/bus_stop evening</code> (<a href="../vn.html#commands">commands</a>); the editor suggests ids and variants.</li>
+  <li>A file named <code>street.evening.png</code> is <b>not</b> a variant: the dev server warns and leaves it out. Variants always come from an .aseprite file.</li>
+  <li>Names: lowercase letters, digits and <code>_</code>. Folders without an <code>index.ts</code> group them. Files and folders starting with <code>_</code> are ignored.</li>
+  <li>New files are picked up while the dev server runs; nothing is downloaded until a background shows (plus the <a href="#look-ahead">look-ahead</a>). Saves remember a background by its id and variant, so they find it after an update.</li>
+  <li>The lite build may shrink everything in a <code>backgrounds</code> folder (<a href="../../world/art.html">media settings</a>).</li>
+</ul>
+<h3 id="background-values">Colours, gradients and other files</h3>
+<pre><code>background('#203040')                            // a colour (also 'rgba(…)', '#rrggbbaa', 'transparent')
+background('linear-gradient(#123, #456)')         // any CSS gradient
+background(forestUrl)                             // an image (import it)
+background(null)                                  // the map again
+cg('pond_memory', 'base')                         // a gallery picture; also unlocks it in Extras
+cg('pond_memory', 'crying.full_moon')             // a variant of a layered CG (art → layered CGs)
+filter('flashback')                               // presets: flashback, night, dream, blur
+filter({ css: 'grayscale(1)' })                   // any CSS filter
+filter(null)</code></pre>
+<h3 id="tints">Tints, and filters on one part</h3>
+<pre><code>filter('evening', { on: 'characters' })           // every portrait (a tint from scenes.ts)
+filter('blur', { on: 'background' })               // the background / CG only
+filter('night', { on: 'anna' })                    // one character
+show('anna', { tint: 'night' })                     // the same while showing her
+filter({ color: '#ff9f80', strength: 0.4 }, { on: 'characters' })   // your own tint
+filter(null, { on: 'characters' })                // remove it again</code></pre>
+<p>A <b>tint</b> multiplies a colour over the picture (white = no change, transparent edges stay transparent), then runs an optional CSS filter: the evening and night look of character art. Presets, tints and <code>{ css }</code> work on every part. Name them in <code>src/content/scenes.ts</code>:</p>
+<pre><code>tints: {
+  evening: { color: '#ffc49a', strength: 0.5 },
+  night: { color: '#7d8cd0', strength: 0.6, css: 'saturate(0.8)' },
+},
+// A background variant that tints the characters by itself:
+tintByBackground: { evening: 'evening', night: 'night' },   // bg('classroom', 'evening') -> 'evening'</code></pre>
+<ul>
+  <li>Who wins on a character: their own tint (<code>show({ tint })</code> or <code>{ on: 'anna' }</code>), else the characters' one, else the background variant's. <code>filter(...)</code> without <code>on</code> still covers the whole stage on top of all of these.</li>
+  <li>A tint named like a preset replaces that preset. The map behind the scene gets only the tint's <code>css</code> part.</li>
+  <li>A tint changes at once (it does not fade); change it while the background crossfades or under a chapter card.</li>
+  <li>Mask transitions stay full-screen only (backgrounds and CGs); characters fade and slide.</li>
+  <li>All of it is part of saves, Back and the stage a route carries into its next scene.</li>
+</ul>
+<p>In .vn: <code>filter evening on characters</code>, <code>filter none on anna</code>, <code>show anna tint night</code>.</p>
+<p>A background can be a colour, a CSS gradient, a picture or a <b>video</b> (<code>import rain from './rain.webm'</code>, <code>background(rain)</code>: it loops without sound).</p>
+<p>Backgrounds crossfade (400 ms): the new picture fades in on top while the old one stays fully shown under it, so nothing dark shows through halfway (also between two variants of one layered background or CG). Going back to the map (<code>null</code>) fades the picture out. A see-through picture (a PNG with transparent parts) shows the old one through those parts until the fade ends. <code>background('#000', { duration: 0 })</code> changes at once. Filters apply to the map behind the scene too.</p>
+<h3 id="transitions">Mask transitions</h3>
+<pre><code>background(room, { transition: 'wipeLeft', duration: 800 })
+cg('pond_memory', 'base', { transition: 'swirl' })</code></pre>
+<p>The new picture comes in through a mask instead of a crossfade (Ren'Py's ImageDissolve, KiriKiri's universal transition). The names are in <code>src/content/scenes.ts</code>:</p>
+<pre><code>transitions: {
+  wipeLeft: { rule: (x) =&gt; 1 - x },                 // a function of the place: x, y from 0 to 1
+  irisOut: { rule: (x, y) =&gt; Math.hypot(x - 0.5, y - 0.5) / 0.71 },
+  swirl: { rule: swirl, softness: 0.2 },             // a greyscale picture you import
+},</code></pre>
+<ul>
+  <li><code>rule</code>: 0 (black) = shows first, 1 (white) = last. <code>softness</code>: width of the moving edge (0 hard, default 0.15). <code>reverse: true</code> starts from white. <code>duration</code>: its default length.</li>
+  <li>Included: <code>wipeLeft / Right / Up / Down</code>, <code>irisOut</code>, <code>irisIn</code>, <code>clock</code>, <code>blinds</code>, <code>diagonal</code>, <code>pixels</code>, <code>swirl</code>.</li>
+  <li>Works for pictures, layered CGs and plain colours. A video, a gradient, or going back to the map (<code>null</code>) crossfades.</li>
+  <li>No mask while skipping or while a save catches up.</li>
+</ul>
+
+<h3 id="video">Video</h3>
+<pre><code>// src/content/movies/opening/index.ts: a movie that unlocks in Extras → Movies
+import video from './opening.mp4'                  // mp4 or webm
+export default defineMovie({ title: 'Opening', video /*, poster, fit, skippable, volume, keepMusic */ })
+
+await movie('opening')                             // plays it, unlocks it, then the script goes on
+await movie('opening', { unlock: false })          // plays it without unlocking
+
+import opening from './opening.mp4'              // or a plain file (never in Extras)
+await movie(opening)
+await movie(opening, { skippable: false, fit: 'cover', volume: 0.8, keepMusic: true })</code></pre>
+<ul>
+  <li>The movie covers the scene. The game's music fades out for it and comes back (<code>keepMusic: true</code> leaves it playing). Its sound follows the master and <b>Movies</b> sliders (Settings → Audio; also for the movies in Extras), times its own <code>volume</code>.</li>
+  <li>Skipping: confirm, a click or a tap shows <b>Skip</b>; the same again skips. <code>skippable: false</code> turns that off.</li>
+  <li>The pause menu (or a hidden tab) pauses it.</li>
+  <li>It is not shown again when a mid-scene save is loaded, when going <b>Back</b>, or while skipping.</li>
+  <li id="movie-languages"><b>Per voice language</b>: put the versions in language folders inside the movie's folder, <code>movies/opening/ja/opening.mp4</code> and <code>movies/opening/en/opening.mp4</code> (the languages of <code>voice.languages</code>), and import any one of them. It plays in the <a href="scripts.html#voice-languages">voice language</a> the player picked, else the next language in the list that has it (so <code>en/</code> may be missing while <code>ja/</code> is there). Extras → Movies and a movie used as a background do the same.</li>
+  <li>Use H.264 mp4 or VP9 webm: both play in the desktop app, on Android and in browsers.</li>
+  <li>A movie's own options (<code>fit</code>, <code>skippable</code>, …) in its file are the defaults; options given to <code>movie()</code> win. See <a href="../../gameplay/extras.html#extras">Extras</a> for the Movies tab.</li>
+</ul>
+
+<h3 id="look-ahead">Look-ahead</h3>
+<p>Like Ren'Py, an event loads its pictures before it needs them. The build lists the pictures each event uses, in script order: imported images, <code>bg(…)</code>, <code>background('…png')</code>, <code>cg(…)</code>, <code>inset(…)</code> and <code>show(…)</code> (all portraits of that character). While the event runs, the next <code>events.preloadAhead</code> of them (<code>src/content/config/media.ts</code>, default 3) are downloaded and decoded. Pictures picked at runtime (a variable, a computed id) are missed and load when shown, as before.</p>
+
+<h2 id="insets">A framed picture in the middle: inset()</h2>
+<p>A smaller picture in a frame, in the middle of the screen over the background (a close-up, a chibi scene). The pictures live in <code>src/content/insets/</code> and work like the <a href="#background-library">background library</a>: a plain file, or a folder with an <code>.aseprite</code> file and an <code>index.ts</code> with variants (<code>defineBackground</code>).</p>
+<pre><code>bg(&#39;shrine&#39;, &#39;night&#39;)              // the night shrine behind
+inset(&#39;sneaking&#39;, &#39;red_girl&#39;)      // src/content/insets/sneaking, its variant red_girl
+inset(&#39;sneaking&#39;, &#39;blue_girl&#39;)     // another one: crossfades inside the frame
+inset(&#39;closeup&#39;, null, { duration: 800 })   // a plain picture, a slower fade
+inset(null)                       // fades away
+
+// .vn
+inset sneaking red_girl
+inset closeup ms 800
+inset none</code></pre>
+<pre><code>// src/content/scenes.ts
+inset: {
+  width: 62,              // % of the screen
+  aspectRatio: &#39;16 / 9&#39;,
+  y: 43,                  // where its middle is, % from the top
+  fadeMs: 300,
+  layer: &#39;underBox&#39;,      // &#39;underBox&#39;: the chat box covers it; &#39;overBox&#39;: it covers the chat box
+},</code></pre>
+<ul>
+  <li>Characters are always behind it. Choices are always over it.</li>
+  <li>Its frame (border, background, shadow) is the look part <code>inset</code> in <code>src/content/look/parts.ts</code>.</li>
+  <li>It stays until <code>inset(null)</code> or the end of the event; in a <a href="../routes.html">route</a> it carries into the next scene with the rest of the stage. It is part of saves and Back, and of the look-ahead.</li>
+  <li>The .vn editor suggests the ids and variants.</li>
+</ul>
+
+<h2 id="images">Pictures on stage</h2>
+<pre><code>import letter from &#39;./letter.png&#39;
+
+await image(&#39;letter&#39;, letter, { y: 40, width: 30, layer: &#39;top&#39; })   // appears (300 ms)
+await image(&#39;letter&#39;, letter, { x: 70, rotate: 8, duration: 600 })  // the same name again = it moves / changes
+await image(&#39;letter&#39;, null)                                        // goes away
+await clearImages()                                                // all of them</code></pre>
+<table>
+  <tr><th>Option</th><th></th></tr>
+  <tr><td><code>x</code>, <code>y</code></td><td>Centre, in % of the screen. Default 50, 50.</td></tr>
+  <tr><td><code>width</code> or <code>height</code></td><td>In % of the screen; the other side follows the picture. Default width 40.</td></tr>
+  <tr><td><code>opacity</code>, <code>scale</code>, <code>rotate</code></td><td>0..1, a factor, degrees.</td></tr>
+  <tr><td><code>layer</code></td><td><code>&#39;back&#39;</code> behind the characters, <code>&#39;front&#39;</code> in front of them (default), <code>&#39;top&#39;</code> over the text box too.</td></tr>
+  <tr><td><code>pixelated</code>, <code>duration</code></td><td>Hard pixel edges; ms to appear, move or go (default 300).</td></tr>
+</table>
+<p>For item close-ups, letters, maps, overlays. Pictures are part of <a href="flow.html#mid-scene-saves">mid-scene saves</a> and Back.</p>
+
+<h2 id="effects">Effects</h2>
+<p>Every effect returns a promise. <code>await</code> it to wait until it ends; leave out <code>await</code> to let it run while the script goes on. To start several things together and wait for all of them, use <code>Promise.all</code>:</p>
+<pre><code>fade('#ffffff51', 2000)                       // starts, doesn't wait
+await say('hero', 'Ehh... What?')            // typed while the fade runs
+
+await Promise.all([say('hero', 'Ehh... What?'), fade('#ffffff51', 2000)])  // waits for both</code></pre>
+<p>In <code>.vn</code> scripts the same is <a href="../vn.html#together"><code>meanwhile</code> and <code>together:</code></a>.</p>
+<pre><code>await animate('anna', { x: 'left', rotate: -10, scale: 1.2, opacity: 0.5 }, { duration: 600, ease: 'backOut' })
+void animate('anna', { y: -40 }, { duration: 140, yoyo: true, repeat: 1 })    // a hop, not awaited
+await camera({ zoom: 1.6, focus: 'anna' })       // zoom on a character (or { x: %, y: % })
+await camera({ zoom: 1, focus: { x: 50, y: 50 } })
+await shake({ strength: 6, duration: 250 })
+startShake(6)                                    // an earthquake that goes on…
+await say('anna', 'The ground is moving!')      // …while lines are spoken
+await stopShake(400)                             // …until you stop it (eases out over 400 ms)
+await flash('#ffffff', 250)
+await fade('#000000', 400)  …  await fade(null, 400)
+await fade('#3f3f3f', 2000)  await fade('#ffffff', 2000)   // crossfades colour and opacity</code></pre>
+<ul>
+  <li><code>shake</code> with <code>duration</code> stops by itself. <code>startShake(strength)</code> and <code>stopShake(duration)</code> start and end a shake yourself, so you can talk over it; several shakes add up, and <code>startShake</code> again changes the strength.</li>
+  <li><code>fade</code> keeps its colour until you change it: a second <code>fade</code> with another colour crossfades into it. Colours can be any CSS colour, including transparent ones (<code>'rgba(0,0,0,0.5)'</code>). <code>flash</code> returns to the colour a fade had.</li>
+  <li><code>animate</code> values: <code>x</code> (a stage position or % of the width), <code>y</code> (stage pixels, positive = down), <code>offsetX</code> (stage pixels), <code>scale</code>, <code>rotate</code> (degrees), <code>opacity</code>.</li>
+  <li>Tween options: <code>duration</code> (ms, default 400), <code>ease</code>, <code>delay</code>, <code>repeat</code>, <code>yoyo</code>.</li>
+  <li>Eases: <code>linear</code>, and <code>sine</code> / <code>quad</code> / <code>cubic</code> / <code>quart</code> / <code>quint</code> / <code>expo</code> / <code>circ</code> / <code>back</code> / <code>elastic</code> / <code>bounce</code> each with <code>In</code>, <code>Out</code>, <code>InOut</code> (<code>'quadInOut'</code>, the default). Also <code>cubicBezier(x1, y1, x2, y2)</code> or your own <code>(t) =&gt; number</code>.</li>
+  <li><strong>Stage pixels</strong> (<code>y</code>, <code>offsetX</code>, shake strength): pixels on a screen 720 tall. They grow and shrink with the real game screen, so <code>y: -140</code> is the same share of the screen on a phone and a 4K monitor. Change the 720 (and the largest portrait size) under <code>stage</code> in <code>src/content/config/screen.ts</code>.</li>
+  <li>The camera zooms the map behind the scene as well. Everything resets when the event ends.</li>
+</ul>
+
+<h3 id="moves">Named moves</h3>
+<pre><code>// src/content/scenes.ts — each step is relative to where the character stood
+moves: {
+  hop: [{ y: -28, duration: 110, ease: &#39;quadOut&#39; }, { duration: 140, ease: &#39;quadIn&#39; }],   // a step with only a duration = back to the start
+  nod: [{ y: 12, duration: 120 }, { duration: 140 }],
+},
+
+await move(&#39;anna&#39;, &#39;hop&#39;)</code></pre>
+<p>Steps take <code>offsetX</code>, <code>y</code> (stage pixels; negative y = up), <code>scale</code>, <code>rotate</code>, <code>opacity</code>, <code>duration</code> (ms, default 150) and <code>ease</code>. Included: hop, nod, shakeHead, startle, lean, leanBack, tremble, sink. Names are checked and autocompleted.</p>
+
+<h3 id="scene-weather">Weather in a scene</h3>
+<pre><code>weather(&#39;snow&#39;)                       // rain, snow, petals, embers: src/content/weather.ts
+weather(&#39;petals&#39;, { intensity: 0.3 })
+weather(null)                         // stops; it also ends with the event</code></pre>
+<p>The same kinds as on <a href="../../world/maps.html#weather">maps</a>. Add your own in <code>content/weather.ts</code> (shape, how many, speed, drift, size, colour): the name works everywhere at once.</p>
+
+<h2 id="nvl">Full-page text</h2>
+<pre><code>nvl()                               // lines now pile up on a page over the scene
+narrate(&#39;The rain had not stopped for three days.&#39;)
+say(&#39;anna&#39;, &#39;And it will not stop today.&#39;)
+clearPage()                         // a new, empty page
+nvl(false)                          // back to the box at the bottom</code></pre>
+<p><code>nvl: { width: 76, maxLines: 0 }</code> in <code>content/scenes.ts</code>: page width in % of the screen, and after how many lines a new page starts by itself (0 = only on <code>clearPage()</code>). The page&#39;s look is <code>nvlPage</code>. Skip, Auto, Back, the log and saving work as in the box.</p>
+
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saves &amp; settings · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Saves &amp; settings</h1>
+
+<p class="lead">One save file holds everything about a playthrough. Saves carry a version number, and old saves are upgraded step by step when loaded.</p>
+
+<h2 id="what">What's in a save</h2>
+<table>
+  <tr><th>Part</th><th>Holds</th></tr>
+  <tr><td><code>data</code></td><td>Your own data, shaped by <code>src/content/save/data.ts</code>: stats, flags, inventory, anything you add</td></tr>
+  <tr><td><code>engine</code></td><td>What the engine tracks: map and exact position, play time, clock, placed structures and props, prop memory, quests, relationships, money, shop stock, party (levels, HP/MP, equipment, skills taught with <code>game.party.learn</code>), which items are switched on (a lit lantern), journal, a thumbnail picture, (visual novel mode) where the story is in its routes, and (mid-scene saves) the scene record</td></tr>
+  <tr><td><code>version</code>, <code>gameVersion</code>, <code>savedAt</code></td><td>Save format version (a number), the game's version (from <code>package.json</code>, for information), date</td></tr>
+</table>
+<p>Not in saves: settings, achievements, gallery/scene unlocks and read lines. Those belong to the device. So do the flowchart's reached and picked boxes (<a href="../story/routes.html">Routes &amp; flowchart</a>).</p>
+
+<h2 id="data">Your saved data</h2>
+<pre><code>// src/content/save/data.ts — keep this file free of game imports
+export const initialData = () =&gt; ({
+  stats: { health: 100, hunger: 0 },
+  flags: {} as Record&lt;string, boolean | number | string&gt;,
+  inventory: {} as Record&lt;string, number&gt;,
+  visitedCaves: [] as string[],          // add anything; then add a migration (below)
+})
+export type GameData = ReturnType&lt;typeof initialData&gt;</code></pre>
+<pre><code>game.state.get().stats.health
+game.state.update((d) =&gt; { d.stats.health -= 10 })     // immer: just change it
+const health = useGameData((d) =&gt; d.stats.health)       // React, from '@/core/state'</code></pre>
+<div class="note">In React, select plain values or an object/array that already exists (<code>useGameData((d) =&gt; d.inventory)</code>) and work with it in the component. Never build a new array or object in the selector (<code>Object.entries(d.inventory)</code>, <code>d.list.filter(…)</code>): it re-renders forever. <code>useShallow</code> doesn't fix that either.</div>
+<div class="note"><code>data.ts</code> must not import game code: the saved data type would then depend on the game, and TypeScript runs into circular types.</div>
+
+<h2 id="slots">Slots, autosave, files</h2>
+<pre><code>game.save.save('slot1')                  // false if saving isn't possible right now
+await game.save.load('slot1')
+game.save.list()                         // every slot with info, thumbnail, or an error
+game.save.list(['slot1', 'slot2'])       // only these
+game.save.autosave()                     // write the 'auto' slot now (false if it was skipped)
+game.save.quickSave()                    // write the 'quick' slot, with a message
+await game.save.quickLoad()              // asks, then loads it
+game.save.latest()                       // the newest save (for "Continue")
+game.save.delete('slot2')                // false when the save is locked
+game.save.setNote('slot1', 'Before the festival')   // the player's comment ('' removes it)
+game.save.setLocked('slot1', true)       // can't be overwritten or deleted until unlocked
+await game.save.exportBackup()           // every slot + persistent data in one file (see below)
+game.save.canSave()                      // see below
+game.save.whyCantSave()                  // a short reason ("in a minigame"), or null when saving works
+game.save.hasUnsavedChanges()            // progress that is in no manual save yet
+game.save.onSaved((slot) =&gt; { … })       // after every save (again once its picture is ready); returns an unsubscribe
+await game.save.newGame()</code></pre>
+<ul>
+  <li>Slots: <code>auto</code>, <code>quick</code>, <code>import</code>, then <code>slot1</code>, <code>slot2</code>… as many as <code>slots</code> in <code>save/index.ts</code> (197, so the window has 200 boxes). Where they are stored: <a href="#where">below</a>.</li>
+  <li id="quick"><b>Quick save</b>: F5 writes the <code>quick</code> slot, F9 loads it after asking (actions <code>quickSave</code> / <code>quickLoad</code> in <code>src/content/config/input.ts</code>); in scenes also the <b>Q.Save</b> / <b>Q.Load</b> buttons. It works wherever saving works, and the slot shows in the Saves window.</li>
+  <li><b>Autosave</b> writes the <code>auto</code> slot at the moments switched on in <code>save/index.ts</code> (<a href="#autosave">below</a>).</li>
+  <li><b>When saving works:</b> on a map (not during a map change, minigame or title screen), or in a scene while a line or choice waits for the player (see <a href="../story/events/flow.html#mid-scene-saves">mid-scene saves</a>). Not during a scene replay from Extras.</li>
+  <li>The Saves window (<code>windows/saves</code>) is a grid of boxes, 5 × 4 a page (4 × 3 on a short screen such as a phone): the save's picture with its name, <a href="../story/events/flow.html#chapters">chapter</a> (or place, without one), play time and date on top. Pressing an empty box saves there; a filled one shows its details (type, play time, date, the map&#39;s title and, during a scene, the event&#39;s title, then the chapter title and description) and asks Load / Overwrite / Delete. The first two boxes are the autosave and the quick save. Left / right at the edge of the grid, <kbd>Q</kbd> / <kbd>R</kbd>, LB / RB or the arrows at the bottom change the page. It also has <i>Back up all</i>, <i>Import backup</i> (or drag &amp; drop a backup), and on desktop <i>Open folder</i>. Grid size and the text strip's colours are constants at the top of the file.</li>
+</ul>
+
+<h2 id="autosave">Autosave</h2>
+<pre><code>// src/content/save/index.ts
+slots: 197,                // manual slots
+autosave: {
+  mapChange: true,         // arrived on another map
+  eventEnd: true,          // a scene finished
+  minigameEnd: true,       // a minigame or battle finished
+  windowsClosed: true,     // the last window closed (shop, inventory, party...)
+  appHidden: true,         // the game went to the background or is closing
+  everyMinutes: 5,         // of play without any save (0 = never)
+},</code></pre>
+<ul>
+  <li>Set one to <code>false</code> to switch it off; remove <code>autosave</code> for none.</li>
+  <li>A moment where saving isn't possible (mid-scene, in a minigame, on the title) is skipped, not retried.</li>
+  <li>Loading a save or starting a new game never autosaves, so loading an old save doesn't replace the autosave.</li>
+  <li>Your own moments (slept at the inn, beat a boss): <code>game.save.autosave()</code>.</li>
+</ul>
+
+<h3 id="browser-slots">Fewer slots in the browser</h3>
+<p>A browser keeps far less than a disk, so the web version offers only as many slots as fit. Desktop and Android store files and offer every slot. The sizes (in characters) are in <code>src/content/save/index.ts</code>:</p>
+<pre><code>browser: {
+  storage: 2_600_000,  // the smallest common browser (Safari); Chrome and Firefox give twice this
+  reserved: 1_000_000, // settings, read lines, unlocks, achievements, anything added later
+  perSave: 130_000,    // one save: its picture plus its data
+},</code></pre>
+<ul>
+  <li>Boxes that fit = (<code>storage</code> − <code>reserved</code>) ÷ <code>perSave</code> = 12: the autosave, the quick save and 10 manual slots.</li>
+  <li>The numbers are safe, not tight: a save is about 8,000 characters in the demo, so each can grow 15 times. Lower <code>perSave</code> for more slots, raise it if your saves get big. Remove <code>browser</code> to offer every slot.</li>
+  <li><b>Notes and locks</b>: picking one of the player's own slots offers <b>Add note</b> / <b>Edit note</b> (up to 40 letters: <code>noteMax</code> in <code>src/content/save/index.ts</code>; typed with the keyboard, the phone's keys, or on-screen keys on a controller) and <b>Lock</b> / <b>Unlock</b>. The note shows on the box instead of the time; a locked box has a padlock, and has no Overwrite or Delete. Both are kept inside the save file, so backups keep them. Saving into the slot again starts without a note.</li>
+  <li>The first time the Saves window opens in the web version, a message says it has fewer slots (once per device).</li>
+  <li>If the storage still fills up, saving fails with a message and the Saves window shows <i>Browser storage has run out. Export your saves to keep your progress.</i> until a save works again or one is deleted.</li>
+  <li>An import or a backup restore that doesn't fit fails with a message; a restore then puts every slot back as it was.</li>
+</ul>
+
+<h3 id="pictures">Save pictures</h3>
+<p>Each save holds a small picture of the game screen as the player saw it: the map with the scene (characters, text box) or the HUD on top, without windows, touch buttons or the black bars around the screen. Size and quality: <code>thumbnail: { width: 256, quality: 0.72 }</code> in <code>src/content/save/index.ts</code>.</p>
+<ul>
+  <li>The map part is taken at once, the whole screen a moment later (it replaces the first picture in the slot). A save made as the app closes may keep the map-only one.</li>
+  <li>Your own layer in the picture: give its root element <code>data-capture</code> (it must be a direct child of the game screen, as the event and HUD layers are).</li>
+</ul>
+
+<h2 id="where">Where saves are stored</h2>
+<p>Saving is automatic on every system: no dialog, the data just lands in the right place. Settings and progress (read lines, unlocks, achievements) are stored the same way, next to the saves.</p>
+<table>
+  <tr><th>System</th><th>Folder</th></tr>
+  <tr><td>Windows</td><td><code>%APPDATA%\&lt;id&gt;\game\</code> (<code>C:\Users\&lt;you&gt;\AppData\Roaming\&lt;id&gt;\game\</code>)</td></tr>
+  <tr><td>Linux</td><td><code>~/.config/&lt;id&gt;/game/</code> (or <code>$XDG_CONFIG_HOME/&lt;id&gt;/game/</code>)</td></tr>
+  <tr><td>macOS</td><td><code>~/Library/Application Support/&lt;id&gt;/game/</code></td></tr>
+  <tr><td>Android</td><td>The app's private folder: <code>/data/data/&lt;appId&gt;/files/game/</code>. Other apps and file managers can't see it (needs <code>adb</code> on a debug build). Uninstalling the app deletes it.</td></tr>
+  <tr><td>Browser</td><td>localStorage, keys <code>&lt;id&gt;:save:&lt;slot&gt;</code>, <code>&lt;id&gt;:settings</code>, <code>&lt;id&gt;:persistent</code>. Per browser and per site address. If the browser blocks site data, everything stays in memory and is gone when the page closes.</td></tr>
+</table>
+<p>The Saves window shows which one is in use at the bottom (<i>Saved to: files on this device</i>, <i>this browser (localStorage)</i>, or <i>Not saved: memory only</i> with a warning). In code:</p>
+<pre><code>game.save.storage() // { kind: 'files' | 'browser' | 'memory', failing, limited }
+// failing: a file could not be written, or the browser's storage is full
+// limited: the browser offers fewer slots than the game has</code></pre>
+<p>Inside the folder:</p>
+<pre><code class="language-sh">game/saves/auto.json      # autosave
+game/saves/slot1.json     # slot1, slot2, ...
+game/settings.json
+game/persistent.json      # read lines, unlocks, achievements, title screen</code></pre>
+<ul>
+  <li>The desktop folder name comes from <code>name</code> in <code>package.json</code>; renaming the game there moves the folder (old saves stay in the old one).</li>
+  <li>Each save file is plain JSON, so you can copy them in and out by hand.</li>
+  <li>Files are written to a <code>.tmp</code> file first and then swapped in, so a crash never leaves half a save.</li>
+  <li>Saves an older version of the app kept in localStorage are moved into the folder on the first start. If a slot is in both places, the newer save is kept.</li>
+  <li>Files are written in the background. If a write fails (disk full, no permission) the player gets a message and the Saves window shows a warning until a write works again.</li>
+  <li>A file that can't be read is skipped (its slot shows as empty); the other saves still load.</li>
+  <li>Desktop: closing the window (X, Alt+F4, Quit) first autosaves (if <code>appHidden</code> is on) and waits for the files to be written, 3 seconds at most.</li>
+</ul>
+
+<h3 id="export-import">Backing up and restoring on every system</h3>
+<p>Saves leave and enter the game only as one <a href="#backup">backup</a> of everything: a single save can't be exported, and a single save file is refused on import (with a message). That keeps progress, unlocks and saves together.</p>
+<table>
+  <tr><th>System</th><th>Export</th><th>Import</th></tr>
+  <tr><td>Desktop</td><td>"Save as" dialog (starts in Documents)</td><td>"Open" dialog, or drop a file on the Saves window</td></tr>
+  <tr><td>Android</td><td>Share sheet: Files, Drive, a chat, …</td><td>The system file picker (shows every file type)</td></tr>
+  <tr><td>Browser</td><td>A download</td><td>File picker, or drop a file on the Saves window</td></tr>
+</table>
+<p>A backup made on one system restores on any other, and old saves in it are upgraded (<a href="#versions">migrations</a>).</p>
+
+<h2 id="backup">Backups (everything in one file)</h2>
+<p>What players think of as "my save": all save slots plus the <a href="#persistent">persistent data</a> (read lines, unlocks, achievements). Settings are left out; they belong to the device.</p>
+<pre><code>await game.save.exportBackup()            // &lt;id&gt;-backup-2026-11-10.json; false if cancelled
+
+game.save.fileKind(text)                  // 'backup' | 'save' | null
+const plan = game.save.readBackup(text)   // checks + upgrades everything, stores nothing yet
+plan.slots                                // the saves in it (SlotInfo, already upgraded)
+plan.existing                             // slots with a save on this device now
+game.save.applyBackup(plan)               // restores it; -> the slots that now hold a save</code></pre>
+<p><b>Importing a backup is a full replace, never a merge.</b> The device ends up exactly as the backup was: every save slot is replaced, slots the backup doesn't have are emptied, and the persistent data is replaced. Lines read, unlocks and achievements that aren't in the backup become unseen again. So loading an old backup really goes back in time.</p>
+<ul>
+  <li><b>Saves:</b> each one is upgraded by the save migrations. If any one can't be used (damaged, or from a newer game), the whole backup is refused and nothing changes. The error names the slot.</li>
+  <li><b>Persistent data</b> is upgraded by the <a href="#persistent-migration">persistent migrations</a> if the backup is older, then replaces this device's. Fields it doesn't have get their empty default. No achievement pop-ups.</li>
+  <li>The Saves window always asks first: <i>Replace everything / Cancel</i>.</li>
+</ul>
+<pre><code>{
+  "format": "&lt;id&gt;-backup",
+  "version": 1,                 // layout of this file (engine only, see below)
+  "persistentVersion": 1,       // version of "persistent"
+  "gameVersion": "0.1.0",
+  "savedAt": "2026-11-10T12:00:00.000Z",
+  "saves": { "auto": { …save file… }, "slot1": { … } },
+  "persistent": { "read": {}, "unlocked": {}, "achievements": {} }
+}</code></pre>
+
+<h2 id="new-game">New game and loading hooks</h2>
+<pre><code>// src/content/save/index.ts
+export default defineSave&lt;GameData&gt;({
+  initial: initialData,
+
+  // After data is reset: put the player somewhere. (Visual novel mode, src/content/config/mode.ts, skips
+  // this: a new game starts the common route, and a save loads back into its route.)
+  newGame: (game) =&gt; {
+    game.party.add('hero')
+    return game.maps.go('heaven/before_god', { spawn: 'start' })
+  },
+
+  // Every loaded save, after migrations, before the game uses it: last fixes.
+  beforeLoad: (save) =&gt; {
+    save.data.stats.health = Math.min(100, Math.max(0, save.data.stats.health))
+    return save
+  },
+
+  // Once the loaded game is on screen.
+  afterLoad: (game) =&gt; { if (game.party.members().length === 0) game.party.add('hero') },
+
+  slots: 197,
+  autosave: { mapChange: true, eventEnd: true, everyMinutes: 5 },   // see Autosave above
+})</code></pre>
+
+<h2 id="versions">Versions and migrations</h2>
+<p>Stored data has a version number, so a newer game can upgrade what an older one wrote. <b>Everything is at version 1 now</b> and there are no migration files. Only add one once the game is out and a change would break data players already have.</p>
+<table>
+  <tr><th>What</th><th>Upgrade files</th><th>Current version</th></tr>
+  <tr><td>Save files (<code>save/data.ts</code> + engine state)</td><td><code>src/content/save/migrations/vN.ts</code></td><td>Highest N, or 1</td></tr>
+  <tr><td><a href="#persistent">Persistent data</a> (read lines, unlocks, achievements)</td><td><code>src/content/save/persistent_migrations/vN.ts</code></td><td>Highest N, or 1</td></tr>
+  <tr><td>Backup file layout</td><td>none (engine; you shouldn't need to touch it)</td><td><code>BACKUP_VERSION</code> in <code>src/core/save/backup.ts</code></td></tr>
+</table>
+<p>The game's own version (<code>package.json</code>) is only shown to players. It never decides how data loads.</p>
+
+<h3 id="when-migrate">Do I need a migration?</h3>
+<table>
+  <tr><th>Change</th><th>Migration?</th></tr>
+  <tr><td>New flag, quest, item, map, event, achievement</td><td>No. They start at their defaults in old saves.</td></tr>
+  <tr><td>New field in <code>data.ts</code> that is fine at its <code>initial</code> value</td><td>Yes, a one-liner that adds it (old saves don't have it).</td></tr>
+  <tr><td>Field renamed, moved, removed, or its type changed</td><td>Yes.</td></tr>
+  <tr><td>A map, event or item id renamed that saves refer to</td><td>Yes, rename it in old saves (<code>engine.map.id</code>, inventory keys…).</td></tr>
+  <tr><td>Before the first release</td><td>No. Change <code>data.ts</code> freely; just delete your own test saves.</td></tr>
+</table>
+
+<h3 id="add-migration">Adding v2 (then v3, v4…)</h3>
+<ol>
+  <li>Change the shape in <code>save/data.ts</code> (here: <code>hp</code> renamed to <code>health</code>).</li>
+  <li>Create the next file. The first one is <code>v2.ts</code>; it upgrades a version 1 save to version 2. The next is <code>v3.ts</code>, and so on. No gaps. Nothing else to register: the file is found by its name.
+<pre><code>// src/content/save/migrations/v2.ts
+import { defineMigration } from '@/core/save/define'
+
+// Version 1 -> 2: `hp` was renamed to `health`.
+export default defineMigration(({ engine, data }) =&gt; {
+  const { hp, ...stats } = data.stats ?? {}
+  return { engine, data: { ...data, stats: { ...stats, health: hp ?? 100 } } }
+})</code></pre></li>
+  <li>Add an example of a version 1 save to <code>OLD_SAVES</code> in <code>src/content/save.test.ts</code>. <code>pnpm test</code> then checks it upgrades to exactly the shape of a new game (and fails until the example is there):
+<pre><code>const OLD_SAVES = [
+  { version: 1, data: { stats: { hp: 42, hunger: 0 }, flags: {}, inventory: {} } },
+]</code></pre></li>
+  <li>Never edit a migration once players have it. Fix mistakes with the next number.</li>
+</ol>
+<ul>
+  <li>Loading a version 1 save in a game at version 4 runs <code>v2</code>, <code>v3</code>, <code>v4</code> in order, then <code>beforeLoad</code>. Each step only knows the step before it.</li>
+  <li>Inside a migration, <code>data</code> is loosely typed on purpose: it's the <i>old</i> shape. Use <code>??</code> for anything that might be missing.</li>
+  <li><code>engine</code> is the engine's part (map, position, quests, money…). Change it only for renamed ids.</li>
+  <li>The same steps upgrade old saves in backups.</li>
+  <li>A save from a <i>newer</i> game is refused with a clear message. Damaged files and missing steps are refused too; nothing is overwritten.</li>
+</ul>
+
+<h3 id="persistent-migration">Persistent data migrations</h3>
+<p>Same idea, for the data kept across all saves (read lines, unlocks, achievements, and your own under <code>game</code>, see <a href="#own-persistent">below</a>). The stored copy on each device and the copy in backups are upgraded by the same files. You only need one to rename a value of your own, or change its kind; a value added later simply starts at its value.</p>
+<pre><code>// src/content/save/persistent_migrations/v2.ts — version 1 -> 2: unlocked split into gallery + scenes
+import { definePersistentMigration } from '@/core/save/define'
+
+export default definePersistentMigration((data) =&gt; {
+  const { unlocked = {}, ...rest } = data
+  return { ...rest, gallery: unlocked, scenes: {} }
+})</code></pre>
+<ol>
+  <li>Change <code>PersistentState</code> and its <code>empty()</code> defaults in <code>stores/persistent.ts</code>.</li>
+  <li>Add the <code>vN.ts</code> file above (first one is <code>v2.ts</code>).</li>
+  <li>Add an example to <code>OLD_PERSISTENT</code> in <code>src/content/save.test.ts</code>.</li>
+  <li>Nothing else: stored data and backups both go through the same files, and restoring a backup replaces the data whole.</li>
+</ol>
+<p>Persistent data from a newer game (after downgrading) is kept as it is rather than thrown away.</p>
+
+<h2 id="leaving">Leaving: title screen and quit</h2>
+<p>Going back to the title screen (or quitting the desktop app) asks first when there is progress that is not in a manual save (autosaves don't count; playtime and the clock don't count either):</p>
+<pre><code>await game.session.leave('title')   // or 'quit'; resolves false if the player stayed
+// Asks "Save first / Leave without saving / Cancel" when saving is possible,
+// otherwise "Leave anyway / Cancel" with the reason saving isn't possible.
+
+// Your own question, with buttons (a small window):
+const choice = await game.dialog.ask('Really?', { yes: 'Yes', no: 'No' })  // null if closed</code></pre>
+
+<h2 id="new-game-plus">New Game+</h2>
+<p>Starting over while keeping some of what was earned. Not offered in <a href="../story/routes.html#mode">visual novel mode</a> (the title menu hides it there). What is kept is remembered outside the save slots at the moment New Game+ is unlocked, so it does not depend on any save.</p>
+<pre><code>// src/content/config/newgameplus.ts
+export default defineNewGamePlus({
+  enabled: true,
+  unlock: 'ending',          // any ending() unlocks it; 'manual' = only game.save.unlockNewGamePlus()
+  carry: {
+    party: true,             // levels, XP, equipment, learned skills
+    money: 1,                // × the money (0 = none)
+    items: true, itemsExcept: ['letter'],
+    codex: true, relationships: false, difficulty: true,
+    flags: [],               // flag names to keep
+    data: [],                // other keys of content/save/data.ts copied whole
+  },
+})
+
+game.save.unlockNewGamePlus()   // remember the game as it is now (again = replace)
+game.save.newGamePlusReady()    // the title menu uses this (content/start.ts)
+await game.save.newGamePlus()   // a new game with the carried things; your newGame runs after
+game.save.cycle()               // 0 = first playthrough, 1 = first New Game+, … (saved)</code></pre>
+<ul>
+  <li>Your <code>newGame</code> runs as always. Use <code>game.save.cycle()</code> there and in events for anything that differs the second time.</li>
+  <li>Party members are not added for you: <code>game.party.add('hero')</code> finds the carried level and equipment. Everyone starts rested.</li>
+  <li>A plain New game starts from nothing; New Game+ stays available.</li>
+  <li>In the Saves window, a save from a New Game+ playthrough (<code>cycle</code> 1 or more) has a small <b>NG+</b> tag in its top left corner, on the same strip colours as the text below. Saves from the first playthrough have none. A slot's <code>cycle</code> is also in <code>game.save.list()</code>.</li>
+</ul>
+
+<h2 id="persistent">Data outside the save slots</h2>
+<p>Kept per device across all saves and new games. Persistent data goes into <a href="#backup">backups</a>; settings don't.</p>
+<table>
+  <tr><th>What</th><th>Where</th></tr>
+  <tr><td>Settings</td><td><code>game/settings.json</code> (browser: <code>&lt;id&gt;:settings</code>), see <a href="#where">where</a></td></tr>
+  <tr><td>Read lines (for Skip), gallery, scene, music room and <a href="../interface/screens.html#title-variants">title screen</a> unlocks, the picked title screen, achievements, what <a href="#new-game-plus">New Game+</a> carries over</td><td><code>game/persistent.json</code> (browser: <code>&lt;id&gt;:persistent</code>); the dev panel can reset it</td></tr>
+</table>
+
+<h3 id="own-persistent">Your own data across saves</h3>
+<p>For things that belong to the player, not to one save ("cleared once", how many endings were seen, a secret opened from the title screen): <code>src/content/save/persistent.ts</code>, each with its starting value (its type comes from it). Data for one playthrough goes in <code>data.ts</code> instead.</p>
+<pre><code>// src/content/save/persistent.ts
+export default definePersistent({
+  clearedOnce: false,
+  endingsSeen: 0,
+})
+
+game.persistent.get('clearedOnce')          // false
+game.persistent.set('clearedOnce', true)
+const cleared = usePersistent('clearedOnce') // React (from '@/core/managers/persistentGame')</code></pre>
+<ul>
+  <li>Kept per device across all saves and new games, in backups, and erased with <b>Erase all data</b>.</li>
+  <li>A value added later starts at its value here. A stored value of another kind than its starting value is dropped.</li>
+  <li>While a scene plays from Extras → <b>Show all</b>, changes are undone afterwards, like everything else earned there.</li>
+</ul>
+
+<h2 id="settings">Settings</h2>
+<table>
+  <tr><th>Setting</th><th></th></tr>
+  <tr><td><code>volume</code></td><td>master, music, sfx, voice (0..1)</td></tr>
+  <tr><td><code>textSpeed</code></td><td>Letters per second; the top of the slider means instant</td></tr>
+  <tr><td><code>autoDelay</code>, <code>skipUnread</code>, <code>skipAfterChoice</code>, <code>skipEffects</code></td><td>Auto-play pause; Skip also skips unread lines; Skip comes back after a choice; fades and animations finish at once while skipping</td></tr>
+  <tr><td><code>fullscreen</code></td><td>Applied on start (browsers: on the first key press)</td></tr>
+  <tr><td><code>screenRatio</code>, <code>cursorAutoHide</code></td><td>Game screen shape; seconds before an idle mouse hides. Choices and defaults: <a href="../interface/settings.html#screen"><code>content/config/screen.ts</code></a></td></tr>
+  <tr><td><code>language</code></td><td><code>'source'</code> or a language folder id</td></tr>
+  <tr><td><code>bindings</code></td><td>The player's own keys/buttons per action</td></tr>
+  <tr><td><code>showDevPanel</code></td><td>Dev builds</td></tr>
+</table>
+<pre><code>import { useSettingsStore } from '@/core/stores/settings'
+const speed = useSettingsStore((s) =&gt; s.textSpeed)
+useSettingsStore.setState((s) =&gt; { s.volume.music = 0.5 })</code></pre>
+<p>Settings added later get their default value automatically.</p>
+
+<h2 id="erase">Erase all data</h2>
+<p>The Settings window ends with <i>Erase all data</i>. After a confirmation it removes everything this game stored (the files in the save folder, or the localStorage keys in a browser) (all save slots, settings, read lines, unlocks, achievements) and reloads the game. There is no undo.</p>
+<pre><code>await game.session.wipeAllData()   // resolves false if the player cancelled; reloads on confirm
+// Anything stored with game storage (src/core/save/storage.ts) is erased too.</code></pre>
+</main>
+</div>
+</body>
+</html>

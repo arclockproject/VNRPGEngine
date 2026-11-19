@@ -1,0 +1,9 @@
+include ':app'
+include ':capacitor-cordova-android-plugins'
+project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
+
+apply from: 'capacitor.settings.gradle'
+// Play Store asset packs: big game files that don't fit the base download (written by
+// scripts/build.ts android-bundle, one module name per line; missing for every other build).
+def assetPacks = file('asset-packs.txt')
+if (assetPacks.exists()) assetPacks.readLines().findAll { it.trim() }.each { include ":${it.trim()}" }

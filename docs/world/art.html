@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Art: sprites &amp; portraits · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Art: sprites &amp; portraits</h1>
+
+<p class="lead">Draw in Aseprite and Tiled; the engine reads their files directly. Saving in either program regenerates what the game uses.</p>
+
+<h2 id="aseprite">Aseprite files</h2>
+<p>The game reads <code>.aseprite</code> files itself (no export step). On save (while the dev server runs, or with <code>pnpm gen</code>) it writes <code>name.gen.png</code> and a typed <code>name.gen.ts</code> next to the file. You import the <code>.gen</code> file.</p>
+<ul>
+  <li>A file inside a folder called <code>sprites/</code> or <code>battle_sprite/</code> is an <a href="#sprites">animated sprite</a>. Any other <code>.aseprite</code> is a <a href="#portraits">portrait</a>.</li>
+  <li>The <code>.aseprite</code> files never ship in builds; importing one directly is an error on purpose.</li>
+  <li>Every layer is used, <b>hidden or not</b>: hide layers in Aseprite as you like while you paint. Layers named <code>_something</code> are left out (sketches, guides).</li>
+  <li>Layers named <code>#something</code> are <b>rule layers</b>: read, never drawn. <code>#face</code> marks the <a href="#face-box">face box</a> of a portrait.</li>
+  <li>RGBA, grayscale and indexed files all work. Linked cels are fine.</li>
+  <li><b>Languages:</b> a layer named <code>&lt;name&gt;.&lt;lang&gt;</code> (<code>open.ja</code> next to <code>Open</code>) is that layer in another language: words on a shirt, a sign in a CG. Capitals don't matter. Works in portraits, sprites and CGs; see <a href="../interface/translations.html#assets">Translations → per language</a>.</li>
+</ul>
+
+<h2 id="sprites">Animated sprites (map)</h2>
+<pre><code>import sprite from './sprites/jack.gen'      // characters/jack/sprites/jack.aseprite
+defineCharacter({ name: 'Jack', sprite })
+// also: props, the player (content/config/player.ts uses the hero's), enemies, any map object with `sprite`
+
+import battleSprite from './battle_sprite/wolf.gen'   // enemies/wolf/battle_sprite/wolf.aseprite
+defineEnemy({ name: 'Wolf', battleSprite, /* … */ })    // same for defineCharacter: see Battles</code></pre>
+<h3 id="tags">Tags = animations</h3>
+<table>
+  <tr><th>Tag name</th><th>Meaning</th></tr>
+  <tr><td><code>idle_down</code>, <code>walk_right</code>, <code>talk_up</code> …</td><td><code>state_direction</code>. Directions: up, down, left, right.</td></tr>
+  <tr><td>missing <code>*_left</code></td><td>Uses <code>*_right</code>, mirrored</td></tr>
+  <tr><td><code>wave</code> (no direction)</td><td>The same for every direction</td></tr>
+  <tr><td>no tags at all</td><td>All frames become one <code>idle</code> animation</td></tr>
+</table>
+<ul>
+  <li>The engine uses <code>idle</code> (standing), <code>walk</code> (moving) and <code>talk</code> (while that character's line types in a scene). Other tags are yours to <code>play()</code>.</li>
+  <li>Frame durations, ping-pong and repeat counts carry over. Repeat 0 (∞) loops; a looping animation keeps going until something else plays.</li>
+  <li>Animation names become types: <code>npc('jack').play('wavee')</code> is an error.</li>
+</ul>
+<h3 id="slices">Slices = placement and collision</h3>
+<table>
+  <tr><th>Slice name</th><th>Meaning</th></tr>
+  <tr><td><code>origin</code></td><td>The feet: its pivot point, or the bottom centre of the slice. Default: the bottom centre of the canvas.</td></tr>
+  <tr><td><code>collision</code>, <code>collision_*</code></td><td>Hitbox (all of them together). Without one, the whole tile blocks. For the player it is the player's hitbox.</td></tr>
+  <tr><td><code>interact</code></td><td>Where the player must face to talk/use. Default: the collision boxes.</td></tr>
+  <tr><td><code>trigger</code>, <code>trigger_*</code></td><td>Walk-over areas for <code>onEnter</code> (pressure plates). They don't block.</td></tr>
+</table>
+<p class="muted">Only frame 1 of a slice counts. Collision isn't mirrored for left-facing sprites. Other slice names give a warning.</p>
+<div class="tip">Turn on <b>collision</b> in the dev panel to see every box on the map: red walls, orange NPC boxes, green triggers, blue interaction areas, cyan player hitbox.</div>
+
+<h2 id="portraits">Portraits (scenes)</h2>
+<p>Four ways, from simplest to most flexible. A character has one of them (<code>portraits</code>, <code>layered</code> or <code>spine</code>), never two.</p>
+<h3>1. One image per pose</h3>
+<pre><code>import neutral from './portraits/neutral.png'
+import happy from './portraits/happy.png'
+defineCharacter({ name: 'Anna', portraits: { neutral, happy } })   // first = default pose</code></pre>
+<h3 id="face-box">The face box</h3>
+<p>Where the face is on a portrait: the <a href="../story/events/stage.html#side-image">side image</a> and the Settings → Voices tiles show that square. In Aseprite, add a layer <code>#face</code> with a black filled square over the face (e.g. 100 × 100 at x 20, y 30). Hide it if you like: it is still read and never drawn. In code it can be set or overridden, most specific first:</p>
+<pre><code>layered: fromAseprite(portrait, {
+  defaults: { eyes: 'open', mouth: 'smile', faceArea: { x: 20, y: 30, w: 100, h: 100 } }, // overrides #face (or sets it)
+  expressions: {
+    neutral: {},
+    tilted: { eyes: 'open', faceArea: { x: 34, y: 28, w: 100, h: 100 } },                  // this expression only
+  },
+})
+defineCharacter({ name: 'Ann', portraits: { neutral, happy }, faceArea: { x: 40, y: 10, w: 200, h: 200 } }) // simple portraits</code></pre>
+<p>Spine portraits: <code>faceArea</code> / <code>faceAreas</code> in <code>fromSpine</code> (<a href="#spine-portraits">below</a>).</p>
+<p>Order: the expression&#39;s <code>faceArea</code> → <code>defaults.faceArea</code> → the <code>#face</code> layer → the character&#39;s <code>faceArea</code> → the top of the portrait. Keep it square; a box that is not is fitted into a square (the Aseprite build warns).</p>
+
+<h3 id="aseprite-portraits">2. Layered, from Aseprite (paper doll)</h3>
+<p>One file with swappable parts. Layer rules:</p>
+<ul>
+  <li>Layers and plain groups (folders) are always drawn: the body. Hidden layers are drawn too (hiding in Aseprite only helps while you paint). <code>_name</code> layers are left out.</li>
+  <li>A layer named <code>#name</code> is a <b>rule layer</b>: read, never drawn (hidden or not). <code>#face</code> is the <a href="#face-box">face box</a>.</li>
+  <li>A group named <code>@Eyes</code> is a <b>part</b>; its children are the <b>options</b> (a layer, or a plain group for a multi-layer option).</li>
+  <li>Layer order is draw order. Names become ids: lowercase, spaces and dashes to <code>_</code> (<code>@Outfit</code> → <code>outfit</code>). No <code>@</code> groups inside <code>@</code> groups.</li>
+</ul>
+<pre><code>layered: fromAseprite(jack, {
+  defaults: { eyes: 'open', mouth: 'smile', outfit: 'jacket' },   // parts not listed start hidden
+  expressions: {                                                   // = the poses
+    neutral: {},
+    happy: { eyes: 'happy', mouth: 'open' },
+    sad: { mouth: 'frown' },
+  },
+  blink: { layer: 'eyes', closed: 'closed' },   // random blinking
+  talk: { layer: 'mouth', open: 'open' },       // mouth flaps while the line types
+  // pixelated: true (default; crisp scaling)
+})</code></pre>
+<p>In scenes: <code>show('jack', { pose: 'happy' })</code>, and swap single parts with <code>show('jack', { parts: { outfit: 'hoodie' } })</code> (typed). Changing pose only resets the parts that pose sets, so an outfit change survives.</p>
+<h3>3. Layered, from images or an atlas</h3>
+<pre><code>import { defineAtlas, defineLayeredPortrait } from '@/core/portrait/define'
+const face = defineAtlas({ src: faceSheet, width: 200, height: 120, frames: { eyes_open: { x: 0, y: 0, w: 100, h: 32 }, mouth_smile: { … }, … } })
+
+layered: defineLayeredPortrait({
+  width: 300, height: 600, base,                                  // the body image
+  layers: {
+    eyes: { x: 110, y: 120, options: { open: face.eyes_open, closed: face.eyes_closed }, default: 'open' },
+    mouth: { x: 125, y: 170, options: { smile: face.mouth_smile, frown: face.mouth_frown } },
+  },
+  expressions: { neutral: {}, sad: { mouth: 'frown' } },
+  blink: { layer: 'eyes', closed: 'closed' },
+})</code></pre>
+<p>Positions are in pixels of the base image; the portrait scales freely. Options can be an image URL, an atlas frame or <code>{ src, x, y }</code>; <code>null</code> hides a layer. Anna and Jack both use Aseprite portraits (<a href="#aseprite-portraits">above</a>).</p>
+
+<h3 id="spine-portraits">4. Animated, from Spine</h3>
+<p>A character rigged and animated in <a href="https://esotericsoftware.com">Spine</a> (runs on Windows, macOS and Linux). The game reads Spine&#39;s <b>export</b>, not the <code>.spine</code> project file (that one never ships; importing it is an error). In Spine: <i>Export → Binary</i> (recommended: smaller, faster) or <i>JSON</i>, with <i>Pack atlas</i> on. Put what it writes into the character&#39;s <code>portraits/</code> folder:</p>
+<pre><code>src/content/characters/driver/portraits/
+  driver.skel     (or driver.json)  the skeleton
+  driver.atlas                      where each image is on the pages
+  driver.png                        the page(s)
+  driver.gen.ts                     made by the game: files, typed animation and skin names, the box</code></pre>
+<p>A portraits folder holds an Aseprite file <b>or</b> a Spine export, never both (the build stops and says so). Export with the same Spine version as the game&#39;s runtime (4.3): an export from another version is warned about, because the runtime may not read it.</p>
+<pre><code>import { fromSpine } from '@/core/portrait/spine'
+import driver from './portraits/driver.gen'
+
+spine: fromSpine(driver, {
+  expressions: {                        // pose name -> animation (typed from the export); first = default
+    neutral: 'idle',
+    happy: 'happy',
+    wave: { intro: 'wave_in', animation: 'wave', parts: { hat: 'cap' } },  // intro once, then wave loops; sets a part
+  },
+  talk: 'talk',                         // laid over the pose while their line types / their voice plays
+  blink: 'blink',                       // laid over now and then (or { animation, everyMs: [2000, 6000] })
+  parts: {                              // skins as parts: show('driver', { parts: { hat: 'party' } })
+    hat: { cap: 'hat/cap', party: 'hat/party', none: null },
+    outfit: { winter: ['outfit/coat', 'acc/scarf'], summer: 'outfit/shirt' },  // an option = one or more skins
+  },
+  defaults: { parts: { outfit: 'summer' } },   // else each part starts on its first option
+  faceArea: { x: 211, y: 206, w: 300, h: 300 },    // the face box, in portrait pixels
+  mix: 0.2,                             // seconds every bone takes to ease into a new animation (default 0.2)
+  mixes: { 'wave>idle': 0.5 },          // its own time for one pair (typed: both must be animations)
+  // box: { x, y, width, height } (Spine units)
+})</code></pre>
+<ul>
+  <li><b>Changing pose never jumps:</b> every bone eases from where it is into the new animation over <code>mix</code> seconds (or the pair&#39;s own time in <code>mixes</code>). Attachment swaps (an eye or mouth image) switch at once, as in Spine. Spine keeps these times out of the export, so they are set here.</li>
+  <li><b>Intro, then loop</b> (&quot;1 2 3 4 5 6 7 5 6 7 5 6 7…&quot;): make two animations in Spine, the intro (1-4) and the loop (5-7), and give the pose <code>intro</code>. The intro plays once, the loop follows right after it (no crossfade between them unless <code>mixes</code> sets one, e.g. <code>'wave_in>wave'</code>) and repeats. Spine has no loop-start marker in an export; two queued animations are its usual way.</li>
+  <li><b>Poses</b> are animations on track 0. <code>talk</code> plays on track 1 and <code>blink</code> on track 2, over the pose. Key the mouth and eyes in every pose animation, so they come back right after talking or blinking.</li>
+  <li><b>Parts</b> are skins. A skin can hold any number of attachments in any slots (meshes, weighted meshes, its own bones), so one option can be a whole outfit or prop. The export&#39;s <code>default</code> skin is always on. Skins that swap the same thing use the same placeholder name in the slot (Spine&#39;s usual setup). Changing pose only resets the parts that pose sets.</li>
+  <li><b>Size:</b> the portrait is the generated <code>box</code>, where every animation and every skin fits, scaled to the portrait height like any other portrait. <code>faceArea</code> is measured from that box&#39;s top left corner, in Spine units.</li>
+  <li><b>Optional:</b> the Spine runtime is only part of a game that has a Spine character, and it loads the first time one is shown. One hidden WebGL renderer draws every Spine portrait into its own canvas, so screenshots and save pictures include them.</li>
+  <li><b>Licence:</b> shipping a game with the Spine runtime needs a Spine Editor licence (Essential or Professional; Enterprise above $500k yearly revenue). Players need nothing.</li>
+</ul>
+<p>In scenes nothing changes: <code>show('driver', { pose: 'wave' })</code>, <code>driver:happy: …</code> in a <code>.vn</code> file, the side image and Settings → Voices work like for any portrait. The demo: the bus driver at the end of the bad route (<code>events/vn_demo/driver</code>).</p>
+
+<h2 id="tilesets">Tiled tilesets</h2>
+<ul>
+  <li>Keep tilesets as <code>.tsj</code> (Tiled: <i>Export As… → JSON tileset</i>) or embed them in the map. Put the image next to it, e.g. <code>src/content/tilesets/countryside.png</code>.</li>
+  <li>Tile property <code>solid</code> = true makes that tile block, wherever it's used.</li>
+  <li>Tile animations made in Tiled play on the map, all on one shared clock.</li>
+  <li>Maps whose tile size suggests pixel art are drawn with crisp (nearest) scaling.</li>
+</ul>
+
+<h2 id="images">Other images</h2>
+<ul>
+  <li>Import images in TypeScript (<code>import icon from './icon.svg'</code>); the build copies them and gives a URL.</li>
+  <li>Item icons are small (16×16) images or SVGs. SVGs need a <code>&lt;title&gt;</code> (Biome checks accessibility).</li>
+  <li>Backgrounds and CG pictures: any image. See <a href="../story/events/stage.html#backgrounds">backgrounds</a> and the <a href="../gameplay/extras.html#extras">gallery</a>.</li>
+  <li>The current art (characters, props, tiles, app icon) is placeholder art made by throwaway scripts. Replace the files and keep the names.</li>
+</ul>
+
+<h2 id="layered-cg">Layered CGs (variants)</h2>
+<p>One Aseprite file in <code>src/content/gallery/&lt;id&gt;/</code> gives a CG whose layers turn on and off (the same works for a background with variants in <code>src/content/backgrounds/&lt;id&gt;/</code>, see <a href="../story/events/stage.html#background-library">the background library</a>):</p>
+<ul>
+  <li>Layers and folders are always drawn, hidden or not (<code>_name</code> is left out and <code>#name</code> is never drawn, as for portraits).</li>
+  <li>A layer or folder named <code>+name</code> is a <b>toggle</b>: off unless a variant turns it on. Hide toggles in Aseprite while you paint if you like. Layer order is drawing order, so a toggle can sit under other layers (tears under hair).</li>
+  <li>Only normal blending is drawn. Output next to the file: <code>pond.gen.png</code> (no toggles), <code>pond.&lt;toggle&gt;.part.gen.png</code> per toggle (cut to its pixels, so a few tears are a tiny image and cost almost no memory), and <code>pond.gen.ts</code> with each layer's place.</li>
+</ul>
+<pre><code>// src/content/gallery/pond_memory/index.ts
+import cg from './pond.gen'                  // from pond.aseprite (+full moon, +crying)
+export default defineGallery({
+  title: 'By the pond',
+  image: cg,
+  variants: {                                // only these exist; order = gallery order
+    base: {},                                // the plain picture (no toggles): only if you list it
+    full_moon: { full_moon: true },
+    'crying.full_moon': { crying: true, full_moon: true },
+  },
+})
+
+cg('pond_memory', 'base')                    // the plain picture (a named variant)
+cg('pond_memory', 'crying.full_moon')        // a variant (typed: a wrong name is an error)</code></pre>
+<p>A CG with variants must always name one: <code>cg('pond_memory')</code> is a type error. The plain picture is never added by itself: list <code>base: {}</code> to have it (in the gallery and in <code>cg()</code>). A picture without variants is used as <code>cg('hill')</code>.</p>
+<p>Each variant unlocks on its own when an event shows it. In Extras → Gallery each variant is a dot in the viewer (see <a href="../gameplay/extras.html#extras">Extras</a>).</p>
+
+<h2 id="big-games">Big games: quality, sizes and memory</h2>
+<p>Settings are in <code>src/content/config/media.ts</code>. Keep working with PNG/JPG/WAV; the build converts them. There are two builds:</p>
+<ul>
+  <li><b>Normal</b> (<code>pnpm build</code>): exactly your quality. Images become <b>lossless</b> WebP (every pixel the same, about 25-40% smaller). WAV/AIFF become <b>FLAC</b> (lossless, sounds the same, about half the size). Files that are already compressed (MP3, OGG, M4A, MP4…) are shipped as they are.</li>
+  <li><b>Lite</b> (any build command + <code>--lite</code>): for weaker devices. Pictures with a <code>lite</code> rule are shrunk (half size by default) and lossy; every sound becomes Opus. Its files end in <code>-lite</code>.</li>
+</ul>
+<pre><code>export default defineMedia({
+  images: {
+    convert: [                                       // first match wins (paths inside src/content)
+      { match: 'gallery/**', format: 'webp', lite: { scale: 0.5, quality: 85 } },
+      { match: '**/backgrounds/**', format: 'webp', lite: { scale: 0.5, quality: 85 } },
+      { match: '**', format: 'webp' },               // pixel art: lossless in both builds
+    ],
+    thumbnails: { width: 480, quality: 80 },         // Extras → Gallery grid
+    memoryMB: { desktop: 1024, mobile: 256, browser: 512 },
+  },
+  audio: {
+    convert: [
+      { match: 'audio/voice/**', format: 'flac', lite: { opusKbps: 48 } },
+      { match: '**', format: 'flac', lite: { opusKbps: 96 } },
+    ],
+  },
+  events: { preloadAhead: 3 },                       // see events → look-ahead
+})</code></pre>
+<ul>
+  <li><b>Only shrink pictures that are drawn scaled to the screen</b> (CGs, event backgrounds: put those in a <code>backgrounds</code> folder). Tilesets, sprite sheets and portraits store their sizes in pixels, so they must keep their size.</li>
+  <li>Dev always serves your own files. <code>quality</code> on a normal rule makes it lossy there too; <code>format: 'keep'</code> ships the original; <code>'avif'</code> is smaller but slower to build. JPGs are always lossy. A converted file that would be bigger than the original is dropped.</li>
+  <li>Results are cached in <code>node_modules/.cache/game-media</code>, so rebuilds only convert new or changed files. Sounds are converted with ffmpeg (the <code>ffmpeg-static</code> package, nothing to install).</li>
+  <li>WebP can't be over 16383 px on a side; such images are shipped as they are (with a warning).</li>
+  <li><b>Memory</b>: an image takes width × height × 4 bytes once loaded (a 2048×2048 tileset ≈ 16 MB), whatever its file size. The current map's images always stay loaded. Images of maps you left stay too, so going back is instant, until they pass <code>memoryMB</code>; then the longest unused are freed. Pictures in events (backgrounds, portraits, CGs) are handled by the browser itself.</li>
+  <li>Keep single images reasonable: 4096×4096 is the safe maximum on phones.</li>
+  <li><b>Git</b>: art and sound are stored with Git LFS (<code>.gitattributes</code>). Run <code>pnpm setup:lfs</code> once per clone.</li>
+  <li>Packaging big games: see <a href="../systems/tools.html#big-builds">Building → big games</a>.</li>
+</ul>
+</main>
+</div>
+</body>
+</html>

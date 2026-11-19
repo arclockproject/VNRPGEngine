@@ -1,0 +1,30 @@
+# The town sign, written as a dialogue script (.vn). It becomes the event 'town/sign'.
+# Lines: "who: text", "who:pose: text", "> narration", commands, "$ any TypeScript".
+# Blocks are indented: choice options (* text) and if / elif / else.
+# "title" names the event on saves made during it.
+
+title The town sign
+
+> An old wooden sign. Someone carved a message into it.
+> {i}"Welcome to town. Be kind to the slimes."{/i}
+
+if flag('read_sign'):
+  > You have read it before. It hasn't changed.
+else:
+  set read_sign = true
+  > Behind the sign, half buried, something glints.
+  choice:
+    * Dig it up
+      give apple
+      money +5
+      > An apple and a few coins. Lucky!
+    * Leave it
+      > You leave it where it is.
+
+# A tour of the visual-novel features (src/content/events/town/showcase).
+> A note is pinned below: {i}"Engine tour, ask here."{/i}
+choice:
+  * Take the tour
+    event town/showcase
+  * Not now
+    > Maybe later.

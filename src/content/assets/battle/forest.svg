@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges">
+  <title>Forest battle background</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16222e"/>
+      <stop offset="1" stop-color="#2f4a3e"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3d5a2e"/>
+      <stop offset="1" stop-color="#1c2a16"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="180" fill="url(#sky)"/>
+  <!-- far trees -->
+  <g fill="#1f3329">
+    <polygon points="0,96 14,40 28,96"/><polygon points="22,96 40,30 58,96"/><polygon points="52,96 66,48 80,96"/>
+    <polygon points="96,96 112,36 128,96"/><polygon points="122,96 136,52 150,96"/><polygon points="170,96 188,34 206,96"/>
+    <polygon points="200,96 214,50 228,96"/><polygon points="240,96 258,32 276,96"/><polygon points="270,96 286,44 302,96"/>
+    <polygon points="296,96 312,38 328,96"/>
+  </g>
+  <!-- near trees -->
+  <g fill="#132018">
+    <rect x="6" y="70" width="6" height="40"/><polygon points="-14,84 9,8 32,84"/>
+    <rect x="300" y="66" width="6" height="44"/><polygon points="280,80 303,4 326,80"/>
+    <rect x="150" y="80" width="4" height="22"/><polygon points="138,88 152,40 166,88"/>
+  </g>
+  <rect y="100" width="320" height="80" fill="url(#ground)"/>
+  <!-- grass tufts and a path -->
+  <ellipse cx="160" cy="140" rx="150" ry="22" fill="#4a6b37" opacity="0.6"/>
+  <g fill="#5b8044">
+    <rect x="30" y="112" width="2" height="3"/><rect x="33" y="113" width="2" height="2"/>
+    <rect x="90" y="160" width="2" height="3"/><rect x="93" y="161" width="2" height="2"/>
+    <rect x="220" y="118" width="2" height="3"/><rect x="223" y="119" width="2" height="2"/>
+    <rect x="270" y="158" width="2" height="3"/><rect x="273" y="159" width="2" height="2"/>
+    <rect x="180" y="170" width="2" height="3"/><rect x="183" y="171" width="2" height="2"/>
+  </g>
+</svg>

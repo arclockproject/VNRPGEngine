@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quests, timers &amp; journal · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Quests, timers &amp; journal</h1>
+<p class="lead">Quests with steps, relationship points, timers and countdowns, achievements and the journal.</p>
+<h2 id="quests">Quests</h2>
+<pre><code>// src/content/quests/jacks_letter/index.ts
+export default defineQuest({
+  title: "Jack's letter",
+  description: 'Something is waiting in the mailbox.',
+  steps: {                                    // in order
+    mailbox: 'Check the mailbox',
+    read: 'Read the letter',
+    talk: {                                   // listed from the start, reads "???" until `when` is true
+      text: 'Talk with Jack',
+      when: ({ game }) =&gt; game.flags.get('took_jacks_letter'),
+      // hiddenText: '???',
+    },
+  },
+  onStart: ({ game }) =&gt; {},
+  onComplete: ({ game }) =&gt; game.items.add('apple', 3, { notify: true }),
+})
+
+game.quests.start('jacks_letter')            // toast "New quest: …"
+game.quests.setStep('jacks_letter', 'read')  // typed step ids
+game.quests.advance('jacks_letter')          // the next step, or done after the last
+game.quests.complete('jacks_letter'); game.quests.fail('jacks_letter'); game.quests.reset('jacks_letter')
+game.quests.status('jacks_letter')           // 'inactive' | 'active' | 'done' | 'failed'
+game.quests.step('jacks_letter'); game.quests.isStepDone('jacks_letter', 'mailbox')
+const quests = useQuests()                   // React</code></pre>
+<p>The quest log shows finished steps and the current one. Later steps stay out of the list, except steps with a <code>when</code>: those take a line from the start and read <code>hiddenText</code> (default <code>???</code>) until <code>when</code> returns true or the step is done. <code>useQuests()</code> gives each quest's <code>steps</code> as ready lines (<code>text</code>, <code>masked</code>, <code>done</code>, <code>current</code>).</p>
+<p>The quest log is <code>windows/quests</code>, opened from the <a href="../interface/input.html#pause-menu">pause menu</a>. Steps not reached yet stay hidden.</p>
+
+<h2 id="relationships">Relationships</h2>
+<p>Points per character, see <a href="../world/characters.html#relationships">Characters</a>.</p>
+
+<h2 id="timers">Timers and countdowns</h2>
+<pre><code>game.timers.start('bomb', { seconds: 60, label: 'Bomb', event: 'cave/boom' })   // counts down, then starts the event
+game.timers.start('race')                          // no seconds = a stopwatch that counts up
+
+if (await game.timers.wait('bomb')) { … }          // true = it ran out, false = stopped first
+const took = game.timers.stop('race')             // seconds it ran; no event
+game.timers.add('bomb', 10)                       // more time (negative = less)
+game.timers.pause('bomb'); game.timers.resume()   // one, or all without an id
+game.timers.left('bomb'); game.timers.elapsed('race'); game.timers.has('bomb'); game.timers.list()
+const timer = useTimer('bomb')                    // React: { left, elapsed, paused, label } once per second</code></pre>
+<table>
+  <tr><th>Option</th><th></th></tr>
+  <tr><td><code>seconds</code></td><td>Length of a countdown. Without it the timer counts up until <code>stop()</code>.</td></tr>
+  <tr><td><code>label</code>, <code>show</code></td><td>Text in front of the time; <code>show: false</code> keeps it off the screen.</td></tr>
+  <tr><td><code>event</code></td><td>An event started when the countdown runs out. Use this (not <code>wait()</code>) for anything that must still happen after a save is loaded: timers are saved, waiting code is not.</td></tr>
+  <tr><td><code>during</code></td><td>Where it keeps running besides the map: <code>{ event: true, minigame: true, window: false }</code>. Missing keys come from <code>content/config/timers.ts</code>.</td></tr>
+</table>
+<pre><code>// src/content/config/timers.ts
+export default defineTimers({
+  runsDuring: { event: false, minigame: true, window: false },   // battles count as minigames
+  place: { top: 56, left: 16 },   // CSS position on the screen (used by src/content/ui/Timers.tsx: their layout)
+  warnSeconds: 10,                // the last seconds get the `timerWarning` look
+  tenthsUnder: 10,                // 0:09.4
+  sounds: { /* tick: 'sfx/tick', end: 'sfx/alarm' */ },
+})</code></pre>
+<p>Timers never run on the title screen, during a map change or while the game is in the background. Their look is <code>timer</code> and <code>timerWarning</code> in <code>content/look/parts.ts</code>.</p>
+
+<h2 id="achievements">Achievements &amp; journal</h2>
+<pre><code>// src/content/achievements/builder/index.ts
+export default defineAchievement({ title: 'Home sweet home', description: 'Help Jack build his house.', secret: false /*, icon */ })
+
+game.achievements.unlock('builder')    // once; toast "Achievement: …" ({ notify: false } to skip)
+game.achievements.has('builder'); game.achievements.list()
+
+// src/content/codex/anna/index.ts
+export default defineCodex({
+  title: 'Anna', category: 'People', text: 'Runs a small stall…', // image?
+  // Optional: other versions by game state. The first whose `when` is true is shown.
+  versions: [
+    { when: (game) =&gt; game.relationships.get('anna') &gt;= 30, text: 'A close friend…' },
+    { when: (game) =&gt; game.flags.get('met_anna'), title: 'Anna?', image: strangeAnna },
+  ],
+})
+
+game.codex.unlock('anna')              // toast "New journal entry: Anna"
+game.codex.has('anna'); game.codex.get('anna').entry.text; game.codex.byCategory()</code></pre>
+<ul>
+  <li>Achievements are per device (all saves). Secret ones show "???" until earned.</li>
+  <li>Achievements, journal entries, endings and title screens unlock the same way: <code>unlock()</code> is <code>true</code> the first time, an unknown id only warns in the console and unlocks nothing, and watching a locked scene from Extras (Show all) earns nothing.</li>
+  <li>Journal entries belong to the playthrough. Only found entries are listed, grouped by <code>category</code>.</li>
+  <li>A version replaces only the fields it sets (<code>title</code>, <code>text</code>, <code>image</code>). Put the strongest condition first. The journal updates by itself when the state changes.</li>
+  <li>Window <code>journal</code> (pause menu): Journal and Achievements tabs.</li>
+</ul>
+
+</main>
+</div>
+</body>
+</html>

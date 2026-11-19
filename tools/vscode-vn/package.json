@@ -1,0 +1,70 @@
+{
+  "name": "EngineToolKit",
+  "displayName": "EngineToolKit (.vn dialogue scripts)",
+  "description": "Colouring, suggestions and error checks for the game's .vn dialogue scripts. Reads ids (characters, poses, flags, items…) from the open project, so new content works without updating the extension.",
+  "version": "0.1.12",
+  "publisher": "INSERTORGANISATIONHERE",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:vn"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "vn",
+        "aliases": [
+          "VN dialogue script",
+          "vn"
+        ],
+        "extensions": [
+          ".vn"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "vn",
+        "scopeName": "source.vn",
+        "path": "./syntaxes/vn.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.ts.vn": "typescript"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "EngineToolKit.showGenerated",
+        "title": "VN: Show generated TypeScript"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "EngineToolKit.showGenerated",
+          "when": "resourceLangId == vn",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configurationDefaults": {
+      "[vn]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2,
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": true
+        },
+        "editor.wordBasedSuggestions": "off"
+      }
+    }
+  }
+}

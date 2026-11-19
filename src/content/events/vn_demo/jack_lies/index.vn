@@ -1,0 +1,8 @@
+# Visual novel demo: you did not trust Jack yet.
+title Jack's tall tale
+
+bg #241d2a
+show jack
+jack: Fair enough. I'll tell you something, anyway.
+jack: I was a pirate, once. A famous one.
+> He does not look like a pirate.

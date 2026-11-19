@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Party &amp; battles · Engine Guide</title>
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { if (localStorage.getItem('docs-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch {}</script>
+<script src="../assets/search-index.gen.js" defer></script>
+<script src="../assets/code.gen.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav"></nav>
+<main>
+<h1>Party &amp; battles</h1>
+<p class="lead">Party members with stats, levels and equipment, turn-based battles and difficulty levels.</p>
+<h2 id="party">Party, stats, levels, equipment</h2>
+<pre><code>// src/content/stats.ts — the stats (typed everywhere), slots and the XP curve
+export default defineStats({
+  stats: {
+    hp: { name: 'HP', pool: true },       // pool = has a current value (12 / 30)
+    mp: { name: 'MP', pool: true },
+    attack: { name: 'Attack' }, defense: { name: 'Defense' }, magic: { name: 'Magic' },
+    resistance: { name: 'Resistance' }, speed: { name: 'Speed' }, luck: { name: 'Luck' },
+  },
+  elements: { fire: { name: 'Fire', color: '#ff7043' }, ice: { name: 'Ice' } },   // damage types, see Battles
+  slots: { weapon: tx('Weapon'), armor: tx('Armor'), accessory: tx('Accessory') },
+  maxLevel: 50,
+  xpForLevel: (level) =&gt; Math.round(8 * (level - 1) ** 2 + 12 * (level - 1)),   // total XP for a level
+  maxMembers: 4,
+})
+
+// characters/hero/index.ts — who can join, and their numbers
+defineCharacter({ name: 'Hero', battle: { base: { hp: 32, attack: 6 }, growth: { hp: 6, attack: 1.5 }, skills: ['power_strike'] } })
+
+// items/wooden_sword/index.ts — wearable
+defineItem({ name: 'Wooden sword', price: 30, max: 1, equip: { slot: 'weapon', stats: { attack: 3 } } })
+// equip can also take elements: { fire: 0.5 }, immune: ['sleep'], skills: ['fire']</code></pre>
+<pre><code>game.party.add('anna', { level: 2, notify: true }); game.party.remove('anna')
+game.party.members(); game.party.has('anna')
+game.party.giveXp('party', 50, { notify: true })   // everyone (or one id); returns { anna: 1 } levels gained
+game.party.stat('hero', 'attack')                  // base + growth × (level − 1) + equipment, rounded down
+game.party.current('hero', 'hp'); game.party.change('hero', 'hp', -5); game.party.restore()
+game.party.equip('hero', 'wooden_sword'); game.party.unequip('hero', 'weapon')
+game.party.member('hero')                          // level, xp, nextLevelXp, stats, current, equipment
+const hero = useMember('hero')                     // React; usePartyMembers() for the list</code></pre>
+<ul>
+  <li>A level up raises the max and adds the new points to current HP/MP (it doesn't heal fully).</li>
+  <li>Equipping takes the item out of the inventory; what was in the slot goes back.</li>
+  <li>Members who leave keep their level and gear for when they come back.</li>
+  <li>The hero joins in <code>save/index.ts</code> (<code>newGame</code>, and <code>afterLoad</code> for older saves). Anna joins from her event once her relationship is 10+.</li>
+  <li>Window <code>party</code> (pause menu): HP/MP/XP bars, stats, equipment pickers.</li>
+</ul>
+
+<h2 id="battles">Battles</h2>
+<p>Turn-based fights on a timeline: fast fighters act more often, and the strip at the top shows who is next. Everything you tune is in <code>src/content</code>: enemies, skills, <code>troops</code>, <code>statuses.ts</code>, <code>battle.ts</code> (settings and formulas) and <code>stats.ts</code> (stats and elements).</p>
+<pre><code>const result = await game.battles.start({ enemies: ['slime', 'bat'], canFlee: false })   // 'win' | 'lose' | 'flee'
+await game.battles.start('wolf_pack')                                                    // a troop, see below</code></pre>
+<table>
+  <tr><th>Rule</th><th></th></tr>
+  <tr><td>Turns</td><td>Each fighter's next turn comes after <code>1000 / (speed + 10)</code> × the action's <code>delay</code>. Speed 20 acts about twice as often as speed 5. The strip previews the order while a skill is focused or being aimed.</td></tr>
+  <tr><td>Damage</td><td><code>attack × power − defense / 2</code>, ±10%, at least 1. Spells use <code>magic</code> against <code>resistance</code>. ×1.5 on a crit, × the target's element rate, halved when defending.</td></tr>
+  <tr><td>Hit and crit</td><td>Hit: 95% ± 1% per point of speed difference (70–100%). Crit: 5% + 1% per <code>luck</code> (up to 50%).</td></tr>
+  <tr><td>Commands</td><td>Attack, Skills, Items, Defend, Check (look at any fighter: HP, statuses and what they do; costs no turn), Run.</td></tr>
+  <tr><td>Run</td><td>Better odds when the party is faster (10–95%). Off with <code>canFlee: false</code>.</td></tr>
+  <tr><td>After</td><td>Win: XP to the party, money, drops. HP/MP carry over to the map; statuses end with the fight. Lose: <code>onLose</code> in <code>content/battle.ts</code>.</td></tr>
+</table>
+
+<h3 id="battle-skills">Skills and effects</h3>
+<pre><code>// src/content/skills/fire/index.ts
+export default defineSkill({
+  name: 'Fire', description: 'Burns every enemy a little.',
+  mp: 5,
+  target: 'all_enemies',          // enemy | all_enemies | ally | all_allies | self | fallen_ally
+  element: 'fire',                // from content/stats.ts `elements`
+  delay: 1,                       // 1.5 = the user's next turn comes later, 0.5 = sooner
+  effects: [
+    { type: 'damage', power: 1.1, uses: 'magic', against: 'resistance' },
+    { type: 'status', status: 'burn', chance: 0.3 },
+  ],
+})</code></pre>
+<table>
+  <tr><th>Effect</th><th></th></tr>
+  <tr><td><code>damage</code></td><td><code>power</code> (× the user's <code>uses</code> stat, default <code>attack</code>, against the target's <code>against</code>, default <code>defense</code>) or <code>flat</code> (fixed, for items). Optional <code>element</code>, <code>drain</code> (share returned as HP), <code>canMiss</code>, <code>canCrit</code>. <code>pure: true</code> = nothing on the target changes it: no defense or resistance stat, no element rate (weak, resist, immune), no defending. A miss stops the skill's other effects on that target.</td></tr>
+  <tr><td><code>heal</code></td><td><code>amount</code> + <code>percent</code> of the target's max + <code>power</code> × the user's magic. <code>pool: 'mp'</code> restores MP.</td></tr>
+  <tr><td><code>status</code></td><td>Gives <code>status</code> with a <code>chance</code> (default 1); <code>turns</code> overrides its length.</td></tr>
+  <tr><td><code>cure</code></td><td>Removes one status, or <code>'bad'</code> for every harmful one.</td></tr>
+  <tr><td><code>revive</code></td><td>Brings a fallen target back with <code>percent</code> of its HP (use target <code>fallen_ally</code>).</td></tr>
+  <tr><td><code>delay</code></td><td>Moves the target's next turn: <code>amount: 0.5</code> = half a turn later, negative = sooner.</td></tr>
+  <tr><td><code>custom</code></td><td><code>run: ({ battle, actor, target, random }) =&gt; { … }</code> for anything else.</td></tr>
+</table>
+<p>Every effect also takes <code>chance</code> (its own roll, 0–1). By default effects are <b>chained</b> to the hit: after a damage effect misses, the ones after it are skipped for that target. Add <code>evenOnMiss: true</code> to make one <b>separate</b>, so it runs (and rolls its own chance) either way.</p>
+<pre><code>effects: [
+  { type: 'damage', power: 0.7 },
+  { type: 'delay', amount: 0.5 },                                  // chained: only if the hit landed
+  { type: 'status', status: 'slow', chance: 0.3, evenOnMiss: true }, // separate: 30% whether it hit or not
+]</code></pre>
+<p>Battle items use the same list: <code>defineItem({ battle: { target: 'ally', effects: [{ type: 'heal', amount: 20 }, { type: 'cure', status: 'bad' }] } })</code>. One is used up.</p>
+<p>Worn equipment can act by itself with the same effects, on its wearer: <code>onStart</code> once when the fight begins, <code>onTurn</code> at the start of each of their turns.</p>
+<pre><code>// src/content/items/cursed_ring/index.ts
+equip: {
+  slot: 'accessory', stats: { magic: 2 },
+  battle: {
+    onStart: [{ type: 'status', status: 'strong' }],
+    onTurn: [{ type: 'heal', amount: 6 }, { type: 'status', status: 'poison', turns: 1 }],   // heals, but keeps you poisoned
+  },
+}</code></pre>
+
+<h3 id="battle-learning">Who has which skill</h3>
+<pre><code>// characters/hero/index.ts — from the start, at a level, or once a quest is done
+battle: { skills: ['trip', { skill: 'power_strike', level: 3 }, { skill: 'smite', quest: 'jacks_letter' }], /* … */ }
+
+// items/wooden_sword/index.ts — while the sword is worn
+equip: { slot: 'weapon', stats: { attack: 3 }, skills: ['slash'] }
+
+// from an event, a quest's onComplete, anywhere: taught for good (saved)
+game.party.learn('anna', 'fire', { notify: true })   // "Anna learned Fire!"; false if she knew it
+game.party.forget('anna', 'fire'); game.party.knows('anna', 'fire'); game.party.skills('anna')</code></pre>
+<ul>
+  <li>Conditions are checked whenever the list is read, so a battle always starts with the current skills. With <code>notify</code>, <code>giveXp</code> announces skills that come with the new level.</li>
+  <li><code>learn</code> works for anyone who can be in the party, also before they join or after they left.</li>
+  <li>Take the sword off and its skill is gone; <code>forget</code> only removes skills given with <code>learn</code>.</li>
+</ul>
+
+<h3 id="battle-statuses">Statuses and elements</h3>
+<pre><code>// src/content/statuses.ts — all of them in one file
+export default defineStatuses({
+  poison: { name: 'Poison', icon: '☠', color: '#ab47bc', bad: true, turns: [3, 5], tick: { hp: -0.08 } },
+  sleep:  { name: 'Sleep', icon: 'z', bad: true, turns: [2, 3], restrict: 'skip', wakeOnHit: true },
+  haste:  { name: 'Haste', icon: '»', turns: 4, stats: { speed: 1.6 } },
+})</code></pre>
+<table>
+  <tr><th>Field</th><th></th></tr>
+  <tr><td><code>turns</code></td><td>How many of the fighter's own turns it lasts: a number or <code>[min, max]</code>. Giving it again refreshes it.</td></tr>
+  <tr><td><code>tick</code></td><td>Share of max HP / MP at the start of each own turn (<code>-0.08</code> = loses 8%, positive = regains).</td></tr>
+  <tr><td><code>stats</code></td><td>Stat multipliers while it lasts. Buffs and debuffs are statuses.</td></tr>
+  <tr><td><code>restrict</code></td><td><code>'skip'</code> loses the turn, <code>'attack_random'</code> attacks anyone, <code>'no_skills'</code>.</td></tr>
+  <tr><td><code>wakeOnHit</code>, <code>bad</code>, <code>icon</code>, <code>description</code></td><td>Ends when damaged; harmful (for <code>cure: 'bad'</code>); a character or image shown on the fighter; text shown by Check.</td></tr>
+</table>
+<p>Included: poison, burn, regen, sleep, stun, haste, slow, strong, brittle. Elements are listed in <code>content/stats.ts</code> (<code>elements: { fire: { name: 'Fire', color: '#ff7043' }, … }</code>). A fighter's <code>elements: { fire: 2, ice: 0.5, poison: 0 }</code> says how much of each it takes: above 1 is a weak spot (“Weak!”), below 1 resists, 0 is immune. <code>immune: ['sleep']</code> lists statuses that never stick. Characters (<code>battle</code>), enemies and equipment (<code>equip</code>) all take both; equipment can also add <code>skills</code>.</p>
+
+<h4 id="battle-lasting">Statuses that outlast the fight</h4>
+<p><code>lasting: true</code> on a status: party members still standing keep it after the fight, with the turns it had left, and start the next fight with it. It shows in the Party window.</p>
+<pre><code>game.party.statuses(&#39;hero&#39;)          // { poison: 3 }
+game.party.cure(&#39;hero&#39;, &#39;poison&#39;)    // one status; &#39;bad&#39; = every harmful one; nothing = all
+game.party.cure()                    // the whole party
+game.party.restore()                 // full HP / MP, and cured</code></pre>
+
+<h3 id="battle-enemies">Enemies and troops</h3>
+<pre><code>// src/content/enemies/wolf/index.ts
+export default defineEnemy({
+  name: 'Wolf',
+  battleSprite,                   // import battleSprite from './battle_sprite/wolf.gen'
+  color: '#90a4ae',               // without a sprite: a blob (or image: wolfUrl)
+  stats: { hp: 34, attack: 9, defense: 3, resistance: 2, speed: 7, luck: 3 },   // any stat from stats.ts
+  elements: { fire: 1.5, ice: 0.5 },
+  actions: [                      // one is picked by weight from those it can use; none = always attack
+    { skill: 'attack', weight: 2 },
+    { skill: 'bite', weight: 3, when: ({ self }) =&gt; self.hp &lt; 17 },
+  ],
+  xp: 18, money: 10, drops: [{ item: 'bread', chance: 0.5 }],
+})
+
+// src/content/troops/wolf_pack/index.ts — a named fight: game.battles.start('wolf_pack'), `battle wolf_pack` in .vn
+export default defineTroop({
+  enemies: ['wolf', 'wolf', 'bat'], background: 'forest', canFlee: false,
+  rewards: { xp: 60, money: 40 },   // instead of what each enemy gives
+})</code></pre>
+<p>Enemies heal the ally who needs it most and prefer targets that don't have a status yet. <code>when</code> also gets <code>battle</code> (<code>battle.turn</code>, <code>battle.side('party')</code>…).</p>
+
+<h4 id="battle-passives">Passives and showing the next move</h4>
+<pre><code>// on a character (battle: { … }) or an enemy
+passive: { name: &#39;Regrowth&#39;, onStart: [{ type: &#39;status&#39;, status: &#39;haste&#39; }], onTurn: [{ type: &#39;heal&#39;, percent: 0.05 }] },
+
+// src/content/battle.ts
+showIntent: true,                       // a label over each enemy: what it will do next
+encounters: { minSteps: 5, rate: 0.08 }, // random battles: tiles before the next one, default chance per tile</code></pre>
+<p><code>onStart</code> runs once when the fight begins, <code>onTurn</code> at the start of each of their turns; both take the same effects as skills. With <code>showIntent</code> enemies decide one turn ahead; a plan that became impossible is chosen again.</p>
+
+<h3 id="battle-settings">Settings and formulas</h3>
+<pre><code>// src/content/battle.ts
+export default defineBattle({
+  music: 'music/battle',               // optional; the map's music comes back afterwards
+  backgrounds: { forest, night: 'linear-gradient(#1b2735, #090a0f)' },   // see below
+  background: 'night',                 // when a battle names none
+  spriteScale: 4,                      // screen pixels per sprite pixel
+  formulas: {                          // optional: replace any of the maths
+    turnDelay: (speed) =&gt; 1000 / (speed + 10),
+    critMultiplier: 2,
+    // damage, hitChance, critChance, defendMultiplier, fleeChance
+  },
+  // onLose: (game) =&gt; { … },         // after a lost battle, INSTEAD of the game over below
+})</code></pre>
+<p>The default formulas read the stats named <code>hp</code>, <code>mp</code>, <code>attack</code>, <code>defense</code>, <code>magic</code>, <code>resistance</code>, <code>speed</code>, <code>luck</code>. The battle screen is the minigame <code>content/minigames/battle</code>: change its look freely. The rules are in <code>core/battle/engine.ts</code> (pure and tested).</p>
+
+<h3 id="game-over">Game over</h3>
+<p>When the whole party is down (a lost battle, <a href="../world/maps.html#terrain">lethal ground</a>) the game-over screen opens. Call it yourself with <code>game.gameOver()</code>.</p>
+<pre><code>// src/content/config/gameover.ts
+export default defineGameOver({
+  mode: 'screen',                       // 'wakeUp' = no screen: everyone is healed, the game carries on
+  title: tx('Game over'),
+  text: tx('The party has fallen.'),
+  buttons: ['load', 'wakeUp', 'title'],  // in this order; 'load' hides itself when there is no save
+  // sound: 'sfx/game_over', music: 'music/game_over',
+  musicFadeMs: 800,
+  wakeUpMessage: tx('You wake up, sore but alive.'),
+})
+
+const how = await game.gameOver()     // 'wakeUp' (the game carries on) | 'load' | 'title'</code></pre>
+<table>
+  <tr><th>Button</th><th></th></tr>
+  <tr><td><code>load</code></td><td>Loads the newest save (any slot, the autosave too).</td></tr>
+  <tr><td><code>wakeUp</code></td><td>Heals the party, shows <code>wakeUpMessage</code> and carries on where they fell. Leave it out for a strict game over.</td></tr>
+  <tr><td><code>title</code></td><td>Back to the title screen, without asking about unsaved progress.</td></tr>
+</table>
+<p>The screen is the window <code>content/windows/gameover</code> (it cannot be closed without picking a button). An event that started the battle keeps running after <code>wakeUp</code> and gets <code>'lose'</code> as the result; after <code>load</code> or <code>title</code> it is dropped.</p>
+
+<h3 id="battle-look">Sprites and backgrounds</h3>
+<p>Enemies stand on the left facing right, the party on the right facing left, over the background.</p>
+<table>
+  <tr><th></th><th></th></tr>
+  <tr><td>Sprites</td><td>An Aseprite file in <code>battle_sprite/</code> next to the enemy or character, imported as <code>battleSprite</code>. Characters without one use their map sprite; enemies fall back to <code>image</code>, then a <code>color</code> blob.</td></tr>
+  <tr><td>Tags</td><td><code>idle</code> (or <code>idle_right</code>/<code>idle_left</code>, mirrored as needed; else <code>idle_down</code>). Optional: <code>hurt</code>, <code>attack</code> (play once, then back to idle), <code>down</code> (held while knocked out). Missing ones: a shake, a step forward, greyed out.</td></tr>
+  <tr><td>Backgrounds</td><td>A name from <code>backgrounds</code>, an imported image (covers the screen) or any CSS background. Picked from <code>start({ background })</code>, else the encounter zone's <code>background</code>, else <code>background</code> in <code>content/battle.ts</code>.</td></tr>
+</table>
+<pre><code>// src/content/battle.ts
+import forest from '@/content/assets/battle/forest.svg'
+export default defineBattle({ backgrounds: { forest }, background: 'forest' })
+
+game.battles.start({ enemies: ['wolf'], background: 'forest' })</code></pre>
+
+<h3 id="encounters">Encounter zones</h3>
+<pre><code>// any map object with an area
+{ id: 'wild_area', at: { x: 14, y: 1 }, size: { w: 15, h: 9 },
+  encounters: { groups: [['slime'], ['bat', 'slime'], 'wolf_pack'], rate: 0.08 } }   // enemy lists or troop ids</code></pre>
+<p>In Tiled: a rectangle with class <code>encounter</code>, properties <code>enemies</code> = <code>slime,slime;bat</code> (groups split by <code>;</code>, enemies by <code>,</code>) and / or <code>troops</code> = <code>wolf_pack;slimes</code>, <code>rate</code> (chance per tile walked, default 0.08), optional <code>background</code>. No fight in the first 5 tiles after a map change or a battle. Example: the east half of the forest.</p>
+
+<h3 id="map-enemies">Enemies on the map</h3>
+<pre><code>// like a character: drawn with the enemy's `sprite` (else its battleSprite)
+objects: {
+  wolf: { enemy: 'wolf', fight: { enemies: ['wolf', 'wolf'], canFlee: false /*, troop: 'wolf_pack', background, respawn: true */ } },
+}</code></pre>
+<p>Interacting with it starts the fight (default: that enemy alone). After a win it is gone for good (saved), unless <code>respawn: true</code>. Give it your own <code>onInteract</code> to do something else. It is solid; scripts reach it with <code>world.npc(id)</code> (id: its name, else <code>enemy_wolf_x_y</code>).</p>
+<p>In Tiled: class <code>enemy</code>, property <code>enemy</code> = <code>wolf</code>; optional <code>enemies</code> (<code>wolf,wolf</code>) or <code>troop</code>, <code>background</code>, <code>canFlee</code>, <code>respawn</code>. Example: the wolf pair in the forest.</p>
+
+<h2 id="difficulty">Difficulty levels</h2>
+<pre><code>// src/content/config/difficulty.ts — every number is a multiplier, 1 = unchanged
+export default defineDifficulty({
+  default: 'normal',
+  askOnNewGame: false,     // true = every new game starts with "Pick a difficulty"
+  canChange: true,         // the player can change it in Settings while playing
+  levels: {
+    easy:   { name: tx('Easy'), description: tx('…'), enemyStats: { hp: 0.75, attack: 0.75 }, encounters: 0.7, terrainDamage: 0.5 },
+    normal: { name: tx('Normal') },
+    hard:   { name: tx('Hard'), enemyStats: { hp: 1.4, attack: 1.25, speed: 1.1 }, xp: 1.15, money: 1.15 },
+  },
+})
+
+game.difficulty.get()            // 'normal' (saved with the game)
+game.difficulty.set('hard')
+await game.difficulty.ask()      // the question window; resolves with the level now in use
+game.difficulty.rate('xp')       // the current multiplier, for your own rules
+const level = useDifficulty()    // React</code></pre>
+<table>
+  <tr><th>Field</th><th>Multiplies</th></tr>
+  <tr><td><code>enemyStats</code></td><td>Enemy stats in battle, by stat name from <code>stats.ts</code> (rounded, never under 1).</td></tr>
+  <tr><td><code>xp</code>, <code>money</code></td><td>What a won battle gives.</td></tr>
+  <tr><td><code>encounters</code></td><td>The chance of random battles.</td></tr>
+  <tr><td><code>terrainDamage</code></td><td>HP lost on <a href="../world/maps.html#terrain">damaging ground</a>.</td></tr>
+  <tr><td><code>prices</code></td><td>Shop prices. Below 1 the shops also pay less, so selling back never makes money.</td></tr>
+</table>
+<p>With one level only, no difficulty setting is shown anywhere. A level removed from the file later falls back to <code>default</code> in old saves.</p>
+
+</main>
+</div>
+</body>
+</html>

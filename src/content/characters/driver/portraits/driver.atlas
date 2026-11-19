@@ -1,0 +1,31 @@
+driver.png
+size: 1024, 1024
+filter: Linear, Linear
+legs
+bounds: 2, 2, 240, 390
+body
+bounds: 244, 2, 380, 400
+arm_l
+bounds: 626, 2, 100, 340
+arm_r
+bounds: 728, 2, 100, 340
+head
+bounds: 2, 404, 320, 330
+eyes_open
+bounds: 324, 404, 190, 70
+eyes_closed
+bounds: 516, 404, 190, 70
+eyes_happy
+bounds: 708, 404, 190, 70
+mouth_closed
+bounds: 900, 404, 120, 60
+mouth_open
+bounds: 2, 736, 120, 60
+mouth_smile
+bounds: 124, 736, 120, 60
+mustache
+bounds: 246, 736, 180, 60
+cap
+bounds: 428, 736, 340, 160
+party_hat
+bounds: 770, 736, 200, 220
